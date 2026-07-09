@@ -1,0 +1,95 @@
+--- src/pages/Tables/Orders.tsx
++++ src/pages/Tables/Orders.tsx
+@@ -4,11 +4,28 @@
+ import { useKitchen } from "../../context/KitchenContext";
+ 
+ export default function Orders() {
+-  const { menu, addOrder } = useKitchen();
++  const { menu, orders, addOrder } = useKitchen();
++  const [contact, setContact] = useState("");
+   const [customerName, setCustomerName] = useState("");
++  const [email, setEmail] = useState("");
++  const [dob, setDob] = useState("");
+   const [discount, setDiscount] = useState(0);
+   const [orderItems, setOrderItems] = useState<{ menuItemId: string; quantity: number }[]>([]);
+ 
++  const handleContactChange = (e: React.ChangeEvent<HTMLInputElement>) => {
++    const newContact = e.target.value;
++    setContact(newContact);
++
++    // Look for existing customer by contact
++    if (newContact.length >= 10) {
++      const existingCustomer = orders.find(o => o.customer.contact === newContact)?.customer;
++      if (existingCustomer) {
++        if (existingCustomer.name) setCustomerName(existingCustomer.name);
++        if (existingCustomer.email) setEmail(existingCustomer.email);
++        if (existingCustomer.dob) setDob(existingCustomer.dob);
++      }
++    }
++  };
++
+   const handleAddItem = () => {
+     if (menu.length > 0) {
+       setOrderItems([...orderItems, { menuItemId: menu[0].id, quantity: 1 }]);
+@@ -31,11 +48,14 @@
+ 
+   const handleSubmit = (e: React.FormEvent) => {
+     e.preventDefault();
+-    if (!customerName || orderItems.length === 0) return;
++    if (!contact || !customerName || orderItems.length === 0) return;
+ 
+-    addOrder(customerName, orderItems, discount);
++    addOrder(customerName, orderItems, discount, contact, email, dob);
+     
++    setContact("");
+     setCustomerName("");
++    setEmail("");
++    setDob("");
+     setDiscount(0);
+     setOrderItems([]);
+   };
+@@ -51,13 +71,43 @@
+           <h2 className="text-xl font-bold text-gray-800 dark:text-white/90 mb-4">Create New Order</h2>
+           <form onSubmit={handleSubmit} className="space-y-4">
+             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+               <div>
++                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Contact Number</label>
++                <input
++                  type="tel"
++                  value={contact}
++                  onChange={handleContactChange}
++                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
++                  required
++                  placeholder="Enter 10-digit number"
++                />
++              </div>
++              <div>
+                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Customer Name</label>
+                 <input
+                   type="text"
+                   value={customerName}
+                   onChange={(e) => setCustomerName(e.target.value)}
+                   className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                   required
+                 />
+               </div>
++              <div>
++                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email (Optional)</label>
++                <input
++                  type="email"
++                  value={email}
++                  onChange={(e) => setEmail(e.target.value)}
++                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
++                />
++              </div>
++              <div>
++                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date of Birth (Optional)</label>
++                <input
++                  type="date"
++                  value={dob}
++                  onChange={(e) => setDob(e.target.value)}
++                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
++                />
++              </div>
+               <div>
+                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Discount (%)</label>

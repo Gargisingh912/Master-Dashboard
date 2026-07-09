@@ -1,0 +1,39 @@
+--- src/context/KitchenContext.tsx
++++ src/context/KitchenContext.tsx
+@@ -27,6 +27,9 @@
+   id: number;
+   customer: {
+     name: string;
++    contact?: string;
++    email?: string;
++    dob?: string;
+   };
+   items: OrderItem[];
+   discount: number;
+@@ -50,7 +53,7 @@
+   addInventoryItem: (item: Omit<InventoryItem, "id">) => void;
+   updateInventoryQuantity: (id: string, quantity: number) => void;
+   addMenuItem: (item: Omit<MenuItem, "id">) => void;
+-  addOrder: (customerName: string, items: OrderItem[], discount: number) => void;
++  addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => void;
+   addExpense: (expense: Omit<Expense, "id" | "date">) => void;
+ }
+ 
+@@ -128,7 +131,7 @@
+     setMenu((prev) => [...prev, { ...item, id: `menu-${Date.now()}` }]);
+   };
+ 
+-  const addOrder = (customerName: string, items: OrderItem[], discount: number) => {
++  const addOrder = (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => {
+     // Calculate total price
+     let subtotal = 0;
+     const inventoryDeductions: Record<string, number> = {};
+@@ -165,7 +168,7 @@
+       ...prev,
+       {
+         id: Date.now(), // Generate a fake ID
+-        customer: { name: customerName },
++        customer: { name: customerName, contact, email, dob },
+         items,
+         discount,
+         total: `₹${total.toFixed(2)}`,
