@@ -1,12 +1,14 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useMemo } from "react";
 import Chart from "react-apexcharts";
 import { ApexOptions } from "apexcharts";
 import flatpickr from "flatpickr";
 import ChartTab from "../common/ChartTab";
 import { CalenderIcon } from "../../icons";
+import { useKitchen } from "../../context/KitchenContext";
 
 export default function StatisticsChart() {
   const datePickerRef = useRef<HTMLInputElement>(null);
+  const { orders, expenses } = useKitchen();
 
   useEffect(() => {
     if (!datePickerRef.current) return;
@@ -133,16 +135,39 @@ export default function StatisticsChart() {
     },
   };
 
-  const series = [
-    {
-      name: "Sales",
-      data: [180, 190, 170, 160, 175, 165, 170, 205, 230, 210, 240, 235],
-    },
-    {
-      name: "Revenue",
-      data: [40, 30, 50, 40, 55, 40, 70, 100, 110, 120, 150, 140],
-    },
-  ];
+  const series = useMemo(() => {
+    const monthlySales = new Array(12).fill(0);
+    const monthlyExpenses = new Array(12).fill(0);
+
+    const currentYear = new Date().getFullYear();
+
+    orders.forEach((order) => {
+      const orderDate = new Date(order.date);
+      if (orderDate.getFullYear() === currentYear && order.status === "Completed") {
+        monthlySales[orderDate.getMonth()] += order.total;
+      }
+    });
+
+    expenses.forEach((expense) => {
+      const expenseDate = new Date(expense.date);
+      if (expenseDate.getFullYear() === currentYear) {
+        monthlyExpenses[expenseDate.getMonth()] += expense.amount;
+      }
+    });
+
+    const monthlyRevenue = monthlySales.map((sales, index) => sales - monthlyExpenses[index]);
+
+    return [
+      {
+        name: "Sales",
+        data: monthlySales,
+      },
+      {
+        name: "Revenue",
+        data: monthlyRevenue,
+      },
+    ];
+  }, [orders, expenses]);
   return (
     <div className="rounded-2xl border border-gray-200 bg-white px-5 pb-5 pt-5 dark:border-gray-800 dark:bg-white/[0.03] sm:px-6 sm:pt-6">
       <div className="flex flex-col gap-5 mb-6 sm:flex-row sm:justify-between">

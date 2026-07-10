@@ -84,11 +84,25 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
 
   useEffect(() => {
     fetchInitialData();
+
+    const channel = supabase
+      .channel('kitchen-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_items' }, () => fetchInitialData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => fetchInitialData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_ingredients' }, () => fetchInitialData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchInitialData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchInitialData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => fetchInitialData(true))
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
-  const fetchInitialData = async () => {
+  const fetchInitialData = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       setError(null);
 
       // Attempt to get the first organization available
@@ -105,7 +119,8 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
 
       // Fetch Inventory
-      const { data: invData } = await supabase.from('inventory_items').select('*').eq('organization_id', currentOrgId);
+      const { data: invData, error: invError } = await supabase.from('inventory_items').select('*');
+      if (invError) console.error("Inventory fetch error:", invError);
       const fetchedInventory = (invData || []).map((item: any) => ({
         id: item.id,
         name: item.name,
@@ -115,7 +130,8 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       setInventory(fetchedInventory);
 
       // Fetch Menu & Ingredients
-      const { data: menuData } = await supabase.from('menu_items').select('*, menu_ingredients(*)').eq('organization_id', currentOrgId);
+      const { data: menuData, error: menuError } = await supabase.from('menu_items').select('*, menu_ingredients(*)');
+      if (menuError) console.error("Menu fetch error:", menuError);
       const fetchedMenu = (menuData || []).map((item: any) => ({
         id: item.id,
         name: item.name,
@@ -129,7 +145,8 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       setMenu(fetchedMenu);
 
       // Fetch Orders & Order Items
-      const { data: ordersData } = await supabase.from('orders').select('*, order_items(*)').eq('organization_id', currentOrgId);
+      const { data: ordersData, error: ordersError } = await supabase.from('orders').select('*, order_items(*)');
+      if (ordersError) console.error("Orders fetch error:", ordersError);
       const fetchedOrders = (ordersData || []).map((o: any) => ({
         id: o.id,
         customer: { name: o.customer_name },
@@ -146,7 +163,8 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       setOrders(fetchedOrders);
 
       // Fetch Expenses
-      const { data: expensesData } = await supabase.from('expenses').select('*').eq('organization_id', currentOrgId);
+      const { data: expensesData, error: expensesError } = await supabase.from('expenses').select('*');
+      if (expensesError) console.error("Expenses fetch error:", expensesError);
       const fetchedExpenses = (expensesData || []).map((e: any) => ({
         id: e.id,
         description: e.description,
@@ -159,7 +177,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     } catch (err: any) {
       setError(err.message || "Failed to fetch data");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 

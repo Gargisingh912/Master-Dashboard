@@ -25,6 +25,7 @@ import Finance from "./pages/Dashboard/Finance";
 import LandingPage from "./pages/public/LandingPage";
 import RegisterPage from "./pages/public/RegisterPage";
 import LoginPage from "./pages/public/LoginPage";
+import FreeTrialPage from "./pages/public/FreeTrialPage";
 export default function App() {
   return (
     <>
@@ -35,6 +36,7 @@ export default function App() {
           <Route path="/" element={<LandingPage />} />
           <Route path="/register" element={<RegisterPage />} />
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/free-trial" element={<FreeTrialPage />} />
           {/* Dashboard Layout */}
           <Route element={<AppLayout />}>
             <Route path="/dashboard" element={<Home />} />

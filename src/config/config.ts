@@ -9,7 +9,7 @@ export const SUPABASE_ANON_KEY =
 
 // Application Configuration
 export const APP_CONFIG = {
-  appName: "Mater-Dashboard",
+  appName: "Master-Dashboard",
   defaultCurrency: "₹",
   taxRate: 0.05, // 5% GST
   orderPrefix: "ORD",
