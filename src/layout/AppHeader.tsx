@@ -3,13 +3,51 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import { useSidebar } from "../context/SidebarContext";
 import { ThemeToggleButton } from "../components/common/ThemeToggleButton";
-import NotificationDropdown from "../components/header/NotificationDropdown";
+//import NotificationDropdown from "../components/header/NotificationDropdown";
 import UserDropdown from "../components/header/UserDropdown";
+import { supabase } from "../config/supabase";
 
 const AppHeader: React.FC = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
+  const [kitchenName, setKitchenName] = useState<string>("");
 
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
+
+  useEffect(() => {
+    async function fetchKitchenName() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError || !profileData) {
+        console.error("Error fetching profile:", profileError);
+        return;
+      }
+
+      const { data: orgData, error: orgError } = await supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", profileData.organization_id)
+        .single();
+
+      if (orgError || !orgData) {
+        console.error("Error fetching organization:", orgError);
+        return;
+      }
+
+      setKitchenName(orgData.name);
+    }
+
+    fetchKitchenName();
+  }, []);
 
   const handleToggle = () => {
     if (window.innerWidth >= 1024) {
@@ -83,17 +121,10 @@ const AppHeader: React.FC = () => {
             {/* Cross Icon */}
           </button>
 
-          <Link to="/" className="lg:hidden">
-            <img
-              className="dark:hidden"
-              src="./images/logo/logo.svg"
-              alt="Logo"
-            />
-            <img
-              className="hidden dark:block"
-              src="./images/logo/logo-dark.svg"
-              alt="Logo"
-            />
+          <Link to="/overview" className="lg:hidden">
+            <span className="text-lg font-semibold text-gray-800 dark:text-white/90">
+              {kitchenName}
+            </span>
           </Link>
 
           <button
@@ -125,7 +156,7 @@ const AppHeader: React.FC = () => {
             {/* <!-- Dark Mode Toggler --> */}
             <ThemeToggleButton />
             {/* <!-- Dark Mode Toggler --> */}
-            <NotificationDropdown />
+            {/* <NotificationDropdown /> turn it on after setting Notification to order alerts */}
             {/* <!-- Notification Menu Area --> */}
           </div>
           {/* <!-- User Area --> */}

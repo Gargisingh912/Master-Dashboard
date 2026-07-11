@@ -15,6 +15,7 @@ import {
   UserCircleIcon,
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
+import { supabase } from "../config/supabase";
 
 type NavItem = {
   name: string;
@@ -70,6 +71,7 @@ const navItems: NavItem[] = [
 const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const location = useLocation();
+  const [kitchenName, setKitchenName] = useState<string>("");
 
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main";
@@ -84,6 +86,42 @@ const AppSidebar: React.FC = () => {
     (path: string) => location.pathname === path,
     [location.pathname]
   );
+
+  useEffect(() => {
+    async function fetchKitchenName() {
+      const {
+        data: { user },
+      } = await supabase.auth.getUser();
+
+      if (!user) return;
+
+      const { data: profileData, error: profileError } = await supabase
+        .from("profiles")
+        .select("organization_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError || !profileData) {
+        console.error("Error fetching profile:", profileError);
+        return;
+      }
+
+      const { data: orgData, error: orgError } = await supabase
+        .from("organizations")
+        .select("name")
+        .eq("id", profileData.organization_id)
+        .single();
+
+      if (orgError || !orgData) {
+        console.error("Error fetching organization:", orgError);
+        return;
+      }
+
+      setKitchenName(orgData.name);
+    }
+
+    fetchKitchenName();
+  }, []);
 
   useEffect(() => {
     let submenuMatched = false;
@@ -263,31 +301,15 @@ const AppSidebar: React.FC = () => {
         className={`py-8 flex ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
           }`}
       >
-        <Link to="/">
+        <Link to="/overview">
           {isExpanded || isHovered || isMobileOpen ? (
-            <>
-              <img
-                className="dark:hidden"
-                src="/images/logo/logo.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-              />
-              <img
-                className="hidden dark:block"
-                src="/images/logo/logo-dark.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-              />
-            </>
+            <span className="text-xl font-bold text-gray-800 dark:text-white/90">
+              {kitchenName}
+            </span>
           ) : (
-            <img
-              src="/images/logo/logo-icon.svg"
-              alt="Logo"
-              width={32}
-              height={32}
-            />
+            <span className="flex items-center justify-center w-8 h-8 rounded-full bg-brand-500 text-white text-sm font-bold">
+              {kitchenName?.charAt(0).toUpperCase()}
+            </span>
           )}
         </Link>
       </div>

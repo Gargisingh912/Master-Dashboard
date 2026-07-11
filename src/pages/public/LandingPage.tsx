@@ -18,7 +18,7 @@ const LandingPage: React.FC = () => {
     const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
     return (
-        <div className="min-h-screen bg-gray-50 ">
+        <div className="min-h-screen bg-gray-50 m-4">
             {/* Navigation */}
             <nav className="border-b border-gray-200 sticky top-0 bg-white/95 backdrop-blur-sm z-40">
                 <div className="container-custom">
@@ -233,7 +233,7 @@ const LandingPage: React.FC = () => {
                             Simple, transparent pricing
                         </h2>
                         <p className="text-lg text-gray-500 ">
-                            Start with a 14-day free trial. No credit rounded-xl border border-gray-200 bg-white p-6 required.
+                            Start with a 3-day free trial. No credit required.
                         </p>
                     </div>
 

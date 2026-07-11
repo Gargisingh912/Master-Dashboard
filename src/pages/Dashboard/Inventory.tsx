@@ -14,7 +14,7 @@ export default function Inventory() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemQuantity, setNewItemQuantity] = useState("");
-  const [newItemUnit, setNewItemUnit] = useState("kg");
+  const [newItemUnit, setNewItemUnit] = useState("");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -28,8 +28,8 @@ export default function Inventory() {
 
     setNewItemName("");
     setNewItemQuantity("");
-    setNewItemUnit("kg");
-    setShowAddForm(false);
+    setNewItemUnit("");
+    setShowAddForm(true);
   };
 
   const handleAdjustStock = (id: string, amount: number) => {

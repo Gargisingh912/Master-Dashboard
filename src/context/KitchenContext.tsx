@@ -27,7 +27,7 @@ export interface OrderItem {
 }
 
 export interface Order {
-  id: string; // Updated to string for UUID
+  id: string;
   customer: {
     name: string;
     contact?: string;
@@ -69,9 +69,6 @@ interface KitchenContextType {
 
 const KitchenContext = createContext<KitchenContextType | undefined>(undefined);
 
-// Using a fallback organization UUID for testing if none is fetched.
-const FALLBACK_ORG_ID = "00000000-0000-0000-0000-000000000000";
-
 export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [menu, setMenu] = useState<MenuItem[]>([]);
@@ -80,7 +77,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [monthlyGoal, setMonthlyGoal] = useState<number>(20000);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
-  const [orgId, setOrgId] = useState<string>(FALLBACK_ORG_ID);
+  const [orgId, setOrgId] = useState<string | null>(null);
 
   useEffect(() => {
     fetchInitialData();
@@ -100,80 +97,128 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     };
   }, []);
 
+  // Resolves the CURRENT LOGGED-IN USER's organization_id via their
+  // profile row — this is the same lookup your RLS policies do
+  // internally (organization_id IN (SELECT organization_id FROM
+  // profiles WHERE id = auth.uid())). Previously this grabbed
+  // whichever organization was first in the table, which meant a
+  // second restaurant's user could resolve to the wrong org.
+  const resolveOrgId = async (): Promise<string | null> => {
+    const { data: userData, error: userError } = await supabase.auth.getUser();
+
+    if (userError || !userData?.user) {
+      console.error("No authenticated user found:", userError);
+      return null;
+    }
+
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('organization_id')
+      .eq('id', userData.user.id)
+      .maybeSingle();
+
+    if (profileError) {
+      console.error("Error fetching profile/organization_id:", profileError);
+      return null;
+    }
+
+    if (!profile?.organization_id) {
+      console.warn("Logged-in user has no organization_id set on their profile.");
+      return null;
+    }
+
+    return profile.organization_id;
+  };
+
   const fetchInitialData = async (silent = false) => {
     try {
       if (!silent) setLoading(true);
       setError(null);
 
-      // Attempt to get the first organization available
-      const { data: orgData, error: orgError } = await supabase.from('organizations').select('id').limit(1);
-      let currentOrgId = FALLBACK_ORG_ID;
-      
-      if (orgError) {
-        console.error("Error fetching organizations:", orgError);
-      } else if (orgData && orgData.length > 0) {
-        currentOrgId = orgData[0].id;
-        setOrgId(currentOrgId);
-      } else {
-        console.warn("No organization found. Using fallback ORG_ID.");
+      const currentOrgId = orgId ?? (await resolveOrgId());
+
+      if (!currentOrgId) {
+        setError("Could not determine your organization. Please log in again.");
+        setInventory([]);
+        setMenu([]);
+        setOrders([]);
+        setExpenses([]);
+        return;
       }
 
-      // Fetch Inventory
-      const { data: invData, error: invError } = await supabase.from('inventory_items').select('*');
+      if (currentOrgId !== orgId) setOrgId(currentOrgId);
+
+      // Every query below is scoped to .eq('organization_id', currentOrgId)
+      // explicitly. RLS would enforce this anyway, but being explicit here
+      // avoids relying solely on RLS to filter — cheaper query planning,
+      // and the intent is clear reading the code.
+
+      const { data: invData, error: invError } = await supabase
+        .from('inventory_items')
+        .select('*')
+        .eq('organization_id', currentOrgId);
       if (invError) console.error("Inventory fetch error:", invError);
-      const fetchedInventory = (invData || []).map((item: any) => ({
+      const fetchedInventory: InventoryItem[] = (invData || []).map((item: any) => ({
         id: item.id,
         name: item.name,
         quantity: item.quantity,
-        unit: 'pcs' // fallback since schema doesn't have unit
+        unit: 'pcs', // schema has no unit column — see note below
       }));
       setInventory(fetchedInventory);
 
-      // Fetch Menu & Ingredients
-      const { data: menuData, error: menuError } = await supabase.from('menu_items').select('*, menu_ingredients(*)');
+      const { data: menuData, error: menuError } = await supabase
+        .from('menu_items')
+        .select('*, menu_ingredients(*)')
+        .eq('organization_id', currentOrgId);
       if (menuError) console.error("Menu fetch error:", menuError);
-      const fetchedMenu = (menuData || []).map((item: any) => ({
+      const fetchedMenu: MenuItem[] = (menuData || []).map((item: any) => ({
         id: item.id,
         name: item.name,
         price: item.price,
         ingredients: (item.menu_ingredients || []).map((ing: any) => ({
           inventoryId: ing.inventory_item_id,
           quantity: ing.quantity,
-          unit: 'pcs' // fallback
-        }))
+          unit: 'pcs',
+        })),
       }));
       setMenu(fetchedMenu);
 
-      // Fetch Orders & Order Items
-      const { data: ordersData, error: ordersError } = await supabase.from('orders').select('*, order_items(*)');
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('orders')
+        .select('*, order_items(*)')
+        .eq('organization_id', currentOrgId)
+        .order('created_at', { ascending: false });
       if (ordersError) console.error("Orders fetch error:", ordersError);
-      const fetchedOrders = (ordersData || []).map((o: any) => ({
+      const fetchedOrders: Order[] = (ordersData || []).map((o: any) => ({
         id: o.id,
         customer: { name: o.customer_name },
         items: (o.order_items || []).map((oi: any) => ({
           menuItemId: oi.menu_item_id,
-          quantity: oi.quantity
+          quantity: oi.quantity,
         })),
-        subtotal: o.total, // fallback since subtotal isn't saved directly
+        subtotal: o.total, // schema stores only the post-discount total, not a
+                            // separate subtotal — see note below
         discount: o.discount,
         total: o.total,
         status: o.status,
-        date: o.created_at
+        date: o.created_at,
       }));
       setOrders(fetchedOrders);
 
-      // Fetch Expenses
-      const { data: expensesData, error: expensesError } = await supabase.from('expenses').select('*');
+      const { data: expensesData, error: expensesError } = await supabase
+        .from('expenses')
+        .select('*')
+        .eq('organization_id', currentOrgId)
+        .order('date', { ascending: false });
       if (expensesError) console.error("Expenses fetch error:", expensesError);
-      const fetchedExpenses = (expensesData || []).map((e: any) => ({
+      const fetchedExpenses: Expense[] = (expensesData || []).map((e: any) => ({
         id: e.id,
         description: e.description,
         amount: e.amount,
         category: e.category,
-        date: e.date || e.created_at
+        date: e.date || e.created_at,
       }));
       setExpenses(fetchedExpenses);
-
     } catch (err: any) {
       setError(err.message || "Failed to fetch data");
     } finally {
@@ -182,14 +227,20 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const addInventoryItem = async (item: Omit<InventoryItem, "id">) => {
+    if (!orgId) {
+      setError("No organization context — please log in again.");
+      return;
+    }
+
     const { data, error } = await supabase.from('inventory_items').insert({
       organization_id: orgId,
       name: item.name,
-      quantity: item.quantity
+      quantity: item.quantity,
     }).select().single();
 
     if (error) {
       console.error(error);
+      setError(error.message);
       return;
     }
 
@@ -207,37 +258,52 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       setInventory(prev =>
         prev.map(i => i.id === id ? { ...i, quantity: newQuantity } : i)
       );
+    } else {
+      console.error(error);
+      setError(error.message);
     }
   };
 
   const addMenuItem = async (item: Omit<MenuItem, "id">) => {
-    // Insert menu item
+    if (!orgId) {
+      setError("No organization context — please log in again.");
+      return;
+    }
+
     const { data: menuData, error: menuError } = await supabase.from('menu_items').insert({
       organization_id: orgId,
       name: item.name,
-      price: item.price
+      price: item.price,
     }).select().single();
 
     if (menuError) {
       console.error(menuError);
+      setError(menuError.message);
       return;
     }
 
-    // Insert ingredients
     if (item.ingredients.length > 0) {
       const ingredientsToInsert = item.ingredients.map(ing => ({
         menu_item_id: menuData.id,
         inventory_item_id: ing.inventoryId,
-        quantity: ing.quantity
+        quantity: ing.quantity,
       }));
       const { error: ingError } = await supabase.from('menu_ingredients').insert(ingredientsToInsert);
-      if (ingError) console.error(ingError);
+      if (ingError) {
+        console.error(ingError);
+        setError(ingError.message);
+      }
     }
 
     setMenu(prev => [...prev, { ...item, id: menuData.id }]);
   };
 
   const addOrder = async (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => {
+    if (!orgId) {
+      setError("No organization context — please log in again.");
+      return;
+    }
+
     let subtotal = 0;
     const inventoryDeductions: Record<string, number> = {};
 
@@ -246,44 +312,50 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (menuItem) {
         subtotal += menuItem.price * orderItem.quantity;
         menuItem.ingredients.forEach((ing) => {
-          let deductionQty = ing.quantity * orderItem.quantity;
-          if (!inventoryDeductions[ing.inventoryId]) inventoryDeductions[ing.inventoryId] = 0;
-          inventoryDeductions[ing.inventoryId] += deductionQty;
+          const deductionQty = ing.quantity * orderItem.quantity;
+          inventoryDeductions[ing.inventoryId] = (inventoryDeductions[ing.inventoryId] || 0) + deductionQty;
         });
       }
     });
 
     const total = subtotal - (subtotal * discount) / 100;
 
-    // Deduct inventory in DB
+    // NOTE: these run sequentially with no transaction — if the order
+    // insert below fails after inventory has already been deducted,
+    // stock is lost with no order to show for it. Flagged, not fixed
+    // here — a real fix needs a Postgres function (rpc) that wraps all
+    // of this in one transaction, similar to the deduct_inventory
+    // trigger pattern used in your other schema.
     for (const [invId, qtyToDeduct] of Object.entries(inventoryDeductions)) {
       await updateInventoryQuantity(invId, -qtyToDeduct);
     }
 
-    // Create Order in DB
     const { data: orderData, error: orderError } = await supabase.from('orders').insert({
       organization_id: orgId,
       customer_name: customerName,
       discount,
       total,
-      status: 'Placed'
+      status: 'Placed',
     }).select().single();
 
     if (orderError) {
       console.error(orderError);
+      setError(orderError.message);
       return;
     }
 
-    // Create Order Items in DB
     const orderItemsToInsert = items.map(i => ({
       order_id: orderData.id,
       menu_item_id: i.menuItemId,
-      quantity: i.quantity
+      quantity: i.quantity,
     }));
-    await supabase.from('order_items').insert(orderItemsToInsert);
+    const { error: orderItemsError } = await supabase.from('order_items').insert(orderItemsToInsert);
+    if (orderItemsError) {
+      console.error(orderItemsError);
+      setError(orderItemsError.message);
+    }
 
     setOrders(prev => [
-      ...prev,
       {
         id: orderData.id,
         customer: { name: customerName, contact, email, dob },
@@ -294,6 +366,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         status: "Placed",
         date: orderData.created_at || new Date().toISOString(),
       },
+      ...prev,
     ]);
   };
 
@@ -305,30 +378,39 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
           order.id === id ? { ...order, status } : order
         )
       );
+    } else {
+      console.error(error);
+      setError(error.message);
     }
   };
 
   const addExpense = async (expense: Omit<Expense, "id" | "date">) => {
+    if (!orgId) {
+      setError("No organization context — please log in again.");
+      return;
+    }
+
     const { data, error } = await supabase.from('expenses').insert({
       organization_id: orgId,
       description: expense.description,
       amount: expense.amount,
       category: expense.category,
-      date: new Date().toISOString()
+      date: new Date().toISOString(),
     }).select().single();
 
     if (error) {
       console.error(error);
+      setError(error.message);
       return;
     }
 
     setExpenses((prev) => [
-      ...prev,
       {
         ...expense,
         id: data.id,
         date: data.date || data.created_at,
       },
+      ...prev,
     ]);
   };
 
@@ -348,7 +430,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         setMonthlyGoal,
         updateOrderStatus,
         loading,
-        error
+        error,
       }}
     >
       {children}

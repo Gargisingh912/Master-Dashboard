@@ -19,9 +19,9 @@ export const APP_CONFIG = {
     free_trial: {
       name: "Free Trial",
       price: 0,
-      duration: "14 days",
+      duration: "3 days",
       features: [
-        "Up to 50 orders/month",
+        "Unlimited",
         "Basic menu management",
         "QR ordering",
         "Email support",

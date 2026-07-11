@@ -138,6 +138,7 @@ const RegisterPage: React.FC = () => {
  name: formData.organization_name.trim(),
  owner_name: formData.owner_name.trim(),
  phone: formData.phone.replace(/[\s\-()]/g, ""),
+ email:formData.email.trim(),
  city: formData.city.trim(),
  address: formData.address.trim() || null,
  type: formData.organization_type,
@@ -157,7 +158,9 @@ const RegisterPage: React.FC = () => {
  .from("profiles")
  .update({
  full_name: formData.owner_name.trim(),
+ email: formData.email.trim(),
  organization_id: org.id,
+
  })
  .eq("id", user.id);
 

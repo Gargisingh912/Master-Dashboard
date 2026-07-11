@@ -38,10 +38,7 @@ export default function EcommerceMetrics() {
               {uniqueCustomers.toLocaleString()}
             </h4>
           </div>
-          <Badge color="success">
-            <ArrowUpIcon />
-            11.01%
-          </Badge>
+          
         </div>
       </div>
       {/* <!-- Metric Item End --> */}
@@ -61,10 +58,7 @@ export default function EcommerceMetrics() {
             </h4>
           </div>
 
-          <Badge color="error">
-            <ArrowDownIcon />
-            9.05%
-          </Badge>
+          
         </div>
       </div>
       {/* <!-- Metric Item End --> */}
