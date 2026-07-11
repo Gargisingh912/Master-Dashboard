@@ -1,10 +1,7 @@
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
   BoxIconLine,
   GroupIcon,
 } from "../../icons";
-import Badge from "../ui/badge/Badge";
 import { useKitchen } from "../../context/KitchenContext";
 
 export default function EcommerceMetrics() {

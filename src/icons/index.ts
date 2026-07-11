@@ -74,7 +74,6 @@ export {
   ErrorIcon,
   ArrowUpIcon,
   FolderIcon,
-  ArrowDownIcon,
   ArrowRightIcon,
   GroupIcon,
   BoxIconLine,
