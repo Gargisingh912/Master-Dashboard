@@ -7,7 +7,6 @@ import { ReactComponent as InfoIcon } from "./info.svg?react";
 import { ReactComponent as ErrorIcon } from "./info-error.svg?react";
 import { ReactComponent as BoltIcon } from "./bolt.svg?react";
 import { ReactComponent as ArrowUpIcon } from "./arrow-up.svg?react";
-import { ReactComponent as ArrowDownIcon } from "./arrow-down.svg?react";
 import { ReactComponent as FolderIcon } from "./folder.svg?react";
 import { ReactComponent as VideoIcon } from "./videos.svg?react";
 import { ReactComponent as AudioIcon } from "./audio.svg?react";
