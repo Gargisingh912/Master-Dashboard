@@ -34,6 +34,9 @@ export interface InventoryItemRow {
   organization_id: string;
   name: string;
   quantity: number;
+  unit: string;
+  alert_at: number;
+  category: string | null;
   created_at: string;
   updated_at: string;
 }

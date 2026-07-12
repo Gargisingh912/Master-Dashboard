@@ -62,7 +62,7 @@ const navItems: NavItem[] = [
 
   },
   {
-    name: "Settings",
+    name: "Docs",
     icon: <LockIcon />,
     path: "/profile",
   },

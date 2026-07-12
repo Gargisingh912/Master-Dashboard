@@ -6,8 +6,9 @@ export interface InventoryItem {
   name: string;
   quantity: number;
   unit: string;
+  alertAt: number;
+  category: string | null;
 }
-
 export interface MenuIngredient {
   inventoryId: string;
   quantity: number;
@@ -159,11 +160,13 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         .eq('organization_id', currentOrgId);
       if (invError) console.error("Inventory fetch error:", invError);
       const fetchedInventory: InventoryItem[] = (invData || []).map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        quantity: item.quantity,
-        unit: 'string', // schema has no unit column — see note below
-      }));
+  id: item.id,
+  name: item.name,
+  quantity: item.quantity,
+  unit: item.unit,
+  alertAt: item.alert_at,
+  category: item.category,
+}));
       setInventory(fetchedInventory);
 
       const { data: menuData, error: menuError } = await supabase
@@ -227,26 +230,28 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   const addInventoryItem = async (item: Omit<InventoryItem, "id">) => {
-    if (!orgId) {
-      setError("No organization context — please log in again.");
-      return;
-    }
+  if (!orgId) {
+    setError("No organization context — please log in again.");
+    return;
+  }
 
-    const { data, error } = await supabase.from('inventory_items').insert({
-      organization_id: orgId,
-      name: item.name,
-      quantity: item.quantity,
-      unit: item.unit,
-    }).select().single();
+  const { data, error } = await supabase.from('inventory_items').insert({
+  organization_id: orgId,
+  name: item.name,
+  quantity: item.quantity,
+  unit: item.unit,
+  alert_at: item.alertAt,
+  category: item.category,
+}).select().single();
 
-    if (error) {
-      console.error(error);
-      setError(error.message);
-      return;
-    }
+  if (error) {
+    console.error(error);
+    setError(error.message);
+    return;
+  }
 
-    setInventory(prev => [...prev, { ...item, id: data.id }]);
-  };
+  setInventory(prev => [...prev, { ...item, id: data.id }]);
+};
 
   // Delegates to a Postgres function (adjust_inventory_quantity) so the
   // increment happens atomically against the DB's current row, not

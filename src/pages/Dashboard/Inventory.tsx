@@ -15,6 +15,11 @@ export default function Inventory() {
   const [newItemName, setNewItemName] = useState("");
   const [newItemQuantity, setNewItemQuantity] = useState("");
   const [newItemUnit, setNewItemUnit] = useState("");
+  const [newItemAlertAt, setNewItemAlertAt] = useState("");
+  const [newItemCategory, setNewItemCategory] = useState("");
+
+  // Tracks the "amount to add" input per row, keyed by item id
+  const [addStockValues, setAddStockValues] = useState<Record<string, string>>({});
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -24,16 +29,29 @@ export default function Inventory() {
       name: newItemName,
       quantity: parseFloat(newItemQuantity),
       unit: newItemUnit,
+      alertAt: parseFloat(newItemAlertAt) || 5,
+      category: newItemCategory || null,
     });
 
     setNewItemName("");
     setNewItemQuantity("");
     setNewItemUnit("");
-    setShowAddForm(true);
+    setNewItemAlertAt("");
+    setNewItemCategory("");
+    setShowAddForm(false);
   };
 
-  const handleAdjustStock = (id: string, amount: number) => {
+  const handleAddStockChange = (id: string, value: string) => {
+    setAddStockValues((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const handleAddStockSubmit = (id: string) => {
+    const raw = addStockValues[id];
+    const amount = parseFloat(raw);
+    if (!raw || isNaN(amount) || amount === 0) return;
+
     updateInventoryQuantity(id, amount);
+    setAddStockValues((prev) => ({ ...prev, [id]: "" }));
   };
 
   return (
@@ -54,8 +72,8 @@ export default function Inventory() {
         {showAddForm && (
           <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-white/[0.05] dark:bg-white/[0.03]">
             <h3 className="text-lg font-medium text-gray-800 dark:text-white/90 mb-4">Add Inventory Item</h3>
-            <form onSubmit={handleSubmit} className="flex gap-4 items-end">
-              <div className="flex-1">
+            <form onSubmit={handleSubmit} className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 items-end">
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Item Name</label>
                 <input
                   type="text"
@@ -65,7 +83,7 @@ export default function Inventory() {
                   required
                 />
               </div>
-              <div className="w-48">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quantity</label>
                 <input
                   type="number"
@@ -76,7 +94,7 @@ export default function Inventory() {
                   min="0"
                 />
               </div>
-              <div className="w-48">
+              <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Unit</label>
                 <select
                   value={newItemUnit}
@@ -91,12 +109,35 @@ export default function Inventory() {
                   <option value="ml">ml</option>
                 </select>
               </div>
-              <button
-                type="submit"
-                className="rounded-lg bg-brand-500 px-6 py-2 text-sm font-medium text-white hover:bg-brand-600 h-10"
-              >
-                Save
-              </button>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alert At</label>
+                <input
+                  type="number"
+                  value={newItemAlertAt}
+                  onChange={(e) => setNewItemAlertAt(e.target.value)}
+                  placeholder="5"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  min="0"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
+                <input
+                  type="text"
+                  value={newItemCategory}
+                  onChange={(e) => setNewItemCategory(e.target.value)}
+                  placeholder="e.g. Vegetables"
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                />
+              </div>
+              <div className="md:col-span-3 lg:col-span-6 flex justify-end">
+                <button
+                  type="submit"
+                  className="rounded-lg bg-brand-500 px-6 py-2 text-sm font-medium text-white hover:bg-brand-600 h-10"
+                >
+                  Save
+                </button>
+              </div>
             </form>
           </div>
         )}
@@ -113,16 +154,19 @@ export default function Inventory() {
               <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
                 <TableRow>
                   <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Item Name
+                    S.No.
                   </TableCell>
                   <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                     Name
                   </TableCell>
                   <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
+                    Category
+                  </TableCell>
+                  <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                     Stock Quantity
                   </TableCell>
                   <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Actions
+                    Add Stock
                   </TableCell>
                 </TableRow>
               </TableHeader>
@@ -131,21 +175,25 @@ export default function Inventory() {
                   Array.from({ length: 5 }).map((_, i) => (
                     <TableRow key={`skeleton-${i}`}>
                       <TableCell className="px-5 py-4 sm:px-6">
-                        <div className="h-4 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                        <div className="h-4 w-6 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
                       </TableCell>
                       <TableCell className="px-5 py-4 sm:px-6">
-                        <div className="h-4 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                        <div className="h-4 w-24 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                      </TableCell>
+                      <TableCell className="px-5 py-4 sm:px-6">
+                        <div className="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
                       </TableCell>
                       <TableCell className="px-4 py-3">
                         <div className="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
                       </TableCell>
                       <TableCell className="px-4 py-3">
-                        <div className="h-8 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                        <div className="h-8 w-28 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
                       </TableCell>
                     </TableRow>
                   ))
                 ) : !error && inventory.length === 0 ? (
                   <TableRow>
+                    <TableCell className="px-5 py-8" />
                     <TableCell className="px-5 py-8 text-center text-gray-500 text-theme-sm dark:text-gray-400">
                       No inventory items yet. Add one to get started.
                     </TableCell>
@@ -154,37 +202,49 @@ export default function Inventory() {
                     <TableCell className="px-5 py-8" />
                   </TableRow>
                 ) : (
-                  inventory.map((item) => (
-                    <TableRow key={item.id}>
-                      <TableCell className="px-5 py-4 sm:px-6 text-start text-gray-500 text-theme-sm dark:text-gray-400">
-                        {item.id}
-                      </TableCell>
-                      <TableCell className="px-5 py-4 sm:px-6 text-start font-medium text-gray-800 dark:text-white/90">
-                        {item.name}
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-start">
-                        <span className={`font-medium ${item.quantity < 10 ? 'text-red-500' : 'text-green-500'}`}>
-                          {item.quantity} {item.unit}
-                        </span>
-                      </TableCell>
-                      <TableCell className="px-4 py-3 text-start">
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleAdjustStock(item.id, -1)}
-                            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                          >
-                            -
-                          </button>
-                          <button
-                            onClick={() => handleAdjustStock(item.id, 1)}
-                            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
+                  inventory.map((item, index) => {
+                    const isLow = item.quantity <= item.alertAt;
+                    return (
+                      <TableRow key={item.id}>
+                        <TableCell className="px-5 py-4 sm:px-6 text-start font-medium text-gray-800 dark:text-white/90">
+                          {index + 1}
+                        </TableCell>
+                        <TableCell className="px-5 py-4 sm:px-6 text-start font-medium text-gray-800 dark:text-white/90">
+                          {item.name}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-start text-gray-500 dark:text-gray-400">
+                          {item.category || "—"}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-start">
+                          <span className={`font-medium ${isLow ? 'text-red-500' : 'text-green-500'}`}>
+                            {item.quantity} {item.unit}
+                          </span>
+                          {isLow && (
+                            <span className="ml-2 rounded-full bg-error/10 px-2 py-0.5 text-xs font-medium text-error">
+                              Low Stock
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="px-4 py-3 text-start">
+                          <div className="flex gap-2 items-center">
+                            <input
+                              type="number"
+                              value={addStockValues[item.id] ?? ""}
+                              onChange={(e) => handleAddStockChange(item.id, e.target.value)}
+                              placeholder={`Qty (${item.unit})`}
+                              className="w-24 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                            />
+                            <button
+                              onClick={() => handleAddStockSubmit(item.id)}
+                              className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-600"
+                            >
+                              Add
+                            </button>
+                          </div>
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
                 )}
               </TableBody>
             </Table>
