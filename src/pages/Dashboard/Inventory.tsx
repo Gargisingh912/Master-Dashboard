@@ -10,7 +10,7 @@ import {
 } from "../../components/ui/table";
 
 export default function Inventory() {
-  const { inventory, addInventoryItem, updateInventoryQuantity } = useKitchen();
+  const { inventory, addInventoryItem, updateInventoryQuantity, loading, error } = useKitchen();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemQuantity, setNewItemQuantity] = useState("");
@@ -22,7 +22,7 @@ export default function Inventory() {
 
     addInventoryItem({
       name: newItemName,
-      quantity: parseInt(newItemQuantity, 10),
+      quantity: parseFloat(newItemQuantity),
       unit: newItemUnit,
     });
 
@@ -44,7 +44,8 @@ export default function Inventory() {
           <h2 className="text-xl font-bold text-gray-800 dark:text-white/90">Inventory</h2>
           <button
             onClick={() => setShowAddForm(!showAddForm)}
-            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+            disabled={loading}
+            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {showAddForm ? "Cancel" : "Add New Item"}
           </button>
@@ -100,13 +101,19 @@ export default function Inventory() {
           </div>
         )}
 
+        {error && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700 dark:border-red-900/50 dark:bg-red-900/10 dark:text-red-400">
+            Failed to load inventory: {error}
+          </div>
+        )}
+
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
           <div className="max-w-full overflow-x-auto">
             <Table>
               <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
                 <TableRow>
                   <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Item ID
+                    Item Name
                   </TableCell>
                   <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
                     Name
@@ -120,37 +127,65 @@ export default function Inventory() {
                 </TableRow>
               </TableHeader>
               <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-                {inventory.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell className="px-5 py-4 sm:px-6 text-start text-gray-500 text-theme-sm dark:text-gray-400">
-                      {item.id}
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <TableRow key={`skeleton-${i}`}>
+                      <TableCell className="px-5 py-4 sm:px-6">
+                        <div className="h-4 w-12 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                      </TableCell>
+                      <TableCell className="px-5 py-4 sm:px-6">
+                        <div className="h-4 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
+                        <div className="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                      </TableCell>
+                      <TableCell className="px-4 py-3">
+                        <div className="h-8 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : !error && inventory.length === 0 ? (
+                  <TableRow>
+                    <TableCell className="px-5 py-8 text-center text-gray-500 text-theme-sm dark:text-gray-400">
+                      No inventory items yet. Add one to get started.
                     </TableCell>
-                    <TableCell className="px-5 py-4 sm:px-6 text-start font-medium text-gray-800 dark:text-white/90">
-                      {item.name}
-                    </TableCell>
-                    <TableCell className="px-4 py-3 text-start">
-                      <span className={`font-medium ${item.quantity < 10 ? 'text-red-500' : 'text-green-500'}`}>
-                        {item.quantity} {item.unit}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-4 py-3 text-start">
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleAdjustStock(item.id, -1)}
-                          className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                        >
-                          -
-                        </button>
-                        <button
-                          onClick={() => handleAdjustStock(item.id, 1)}
-                          className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
-                        >
-                          +
-                        </button>
-                      </div>
-                    </TableCell>
+                    <TableCell className="px-5 py-8" />
+                    <TableCell className="px-5 py-8" />
+                    <TableCell className="px-5 py-8" />
                   </TableRow>
-                ))}
+                ) : (
+                  inventory.map((item) => (
+                    <TableRow key={item.id}>
+                      <TableCell className="px-5 py-4 sm:px-6 text-start text-gray-500 text-theme-sm dark:text-gray-400">
+                        {item.id}
+                      </TableCell>
+                      <TableCell className="px-5 py-4 sm:px-6 text-start font-medium text-gray-800 dark:text-white/90">
+                        {item.name}
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-start">
+                        <span className={`font-medium ${item.quantity < 10 ? 'text-red-500' : 'text-green-500'}`}>
+                          {item.quantity} {item.unit}
+                        </span>
+                      </TableCell>
+                      <TableCell className="px-4 py-3 text-start">
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleAdjustStock(item.id, -1)}
+                            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                          >
+                            -
+                          </button>
+                          <button
+                            onClick={() => handleAdjustStock(item.id, 1)}
+                            className="w-8 h-8 rounded-full bg-gray-100 flex items-center justify-center text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
+                          >
+                            +
+                          </button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </div>

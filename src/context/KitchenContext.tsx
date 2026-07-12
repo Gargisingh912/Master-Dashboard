@@ -162,7 +162,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         id: item.id,
         name: item.name,
         quantity: item.quantity,
-        unit: 'pcs', // schema has no unit column — see note below
+        unit: 'string', // schema has no unit column — see note below
       }));
       setInventory(fetchedInventory);
 
@@ -178,7 +178,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         ingredients: (item.menu_ingredients || []).map((ing: any) => ({
           inventoryId: ing.inventory_item_id,
           quantity: ing.quantity,
-          unit: 'pcs',
+          unit: 'string',
         })),
       }));
       setMenu(fetchedMenu);
@@ -236,6 +236,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       organization_id: orgId,
       name: item.name,
       quantity: item.quantity,
+      unit: item.unit,
     }).select().single();
 
     if (error) {
@@ -247,18 +248,23 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     setInventory(prev => [...prev, { ...item, id: data.id }]);
   };
 
+  // Delegates to a Postgres function (adjust_inventory_quantity) so the
+  // increment happens atomically against the DB's current row, not
+  // against a possibly-stale local `inventory` snapshot. Two rapid clicks,
+  // or two staff on different devices, previously could both read the
+  // same starting quantity and stomp on each other.
+  //
+  // No optimistic local update here on purpose — the postgres_changes
+  // subscription on 'inventory_items' (see useEffect above) will fire
+  // once the row changes and call fetchInitialData(true), which is the
+  // actual source of truth for local state.
   const updateInventoryQuantity = async (id: string, quantity: number) => {
-    const item = inventory.find(i => i.id === id);
-    if (!item) return;
+    const { error } = await supabase.rpc('adjust_inventory_quantity', {
+      item_id: id,
+      delta: quantity,
+    });
 
-    const newQuantity = item.quantity + quantity;
-    const { error } = await supabase.from('inventory_items').update({ quantity: newQuantity }).eq('id', id);
-
-    if (!error) {
-      setInventory(prev =>
-        prev.map(i => i.id === id ? { ...i, quantity: newQuantity } : i)
-      );
-    } else {
+    if (error) {
       console.error(error);
       setError(error.message);
     }
@@ -320,14 +326,27 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const total = subtotal - (subtotal * discount) / 100;
 
-    // NOTE: these run sequentially with no transaction — if the order
-    // insert below fails after inventory has already been deducted,
-    // stock is lost with no order to show for it. Flagged, not fixed
-    // here — a real fix needs a Postgres function (rpc) that wraps all
-    // of this in one transaction, similar to the deduct_inventory
-    // trigger pattern used in your other schema.
-    for (const [invId, qtyToDeduct] of Object.entries(inventoryDeductions)) {
-      await updateInventoryQuantity(invId, -qtyToDeduct);
+    // Batched into a single Postgres function (deduct_inventory_for_order)
+    // that wraps every deduction in one transaction. Previously this
+    // looped calling updateInventoryQuantity per ingredient — N separate
+    // round trips, each reading from the same stale local `inventory`
+    // snapshot, and if the order insert below failed partway through,
+    // stock could be deducted with no order to show for it.
+    if (Object.keys(inventoryDeductions).length > 0) {
+      const deductions = Object.entries(inventoryDeductions).map(([inventory_id, qty]) => ({
+        inventory_id,
+        qty,
+      }));
+
+      const { error: deductError } = await supabase.rpc('deduct_inventory_for_order', {
+        deductions,
+      });
+
+      if (deductError) {
+        console.error(deductError);
+        setError(deductError.message);
+        return;
+      }
     }
 
     const { data: orderData, error: orderError } = await supabase.from('orders').insert({
