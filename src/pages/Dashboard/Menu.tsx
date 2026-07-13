@@ -100,22 +100,26 @@ export default function Menu() {
   // don't keep re-firing the same update call once it's already off.
   const autoDisabledRef = useRef<Set<string>>(new Set());
 
-  // Can this item currently be made twice over, given live inventory?
-  const canMake2x = (item: { ingredients: MenuIngredient[] }) => {
-    if (item.ingredients.length === 0) return true; // no recipe defined — no constraint
-    return item.ingredients.every((ing) => {
-      const invItem = inventory.find((i) => i.id === ing.inventoryId);
-      if (!invItem) return false; // referenced ingredient no longer exists
-      return invItem.quantity >= ing.quantity * 2;
-    });
-  };
+  // Low-stock threshold: an ingredient is "low" once stock drops below
+// 5x what a single dish requires. Below that, the dish is auto-marked
+// unavailable so it can't be sold without enough buffer stock.
+const LOW_STOCK_MULTIPLIER = 5;
+
+const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
+  if (item.ingredients.length === 0) return true; // no recipe defined — no constraint
+  return item.ingredients.every((ing) => {
+    const invItem = inventory.find((i) => i.id === ing.inventoryId);
+    if (!invItem) return false; // referenced ingredient no longer exists
+    return invItem.quantity >= ing.quantity * LOW_STOCK_MULTIPLIER;
+  });
+};
 
   // Auto-disable availability when stock can't support 2x, so the
   // persisted is_available reflects reality. Manual re-enable is still
   // allowed afterward — see handleToggleAvailability below.
   useEffect(() => {
     menu.forEach((item) => {
-      const makeable = canMake2x(item);
+      const makeable = hasSufficientStock(item);
       if (item.isAvailable && !makeable && !autoDisabledRef.current.has(item.id)) {
         autoDisabledRef.current.add(item.id);
         setMenuItemAvailability(item.id, false);
@@ -287,7 +291,7 @@ export default function Menu() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {menu.map((item) => {
-            const makeable = canMake2x(item);
+            const makeable = hasSufficientStock(item);
             const isEditing = editingId === item.id;
 
             return (
@@ -342,9 +346,11 @@ export default function Menu() {
                   <>
                     <div className="flex justify-between items-start mb-4">
                       <div>
-                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{item.name}</h3>
-                        <span className="font-medium text-brand-500">₹{item.price}</span>
-                      </div>
+  <h3 className={`text-lg font-semibold ${!makeable ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-white/90"}`}>
+    {item.name}
+  </h3>
+  <span className="font-medium text-brand-500">₹{item.price}</span>
+</div>
 
                       <div className="flex items-center gap-3">
                         <button
@@ -377,13 +383,13 @@ export default function Menu() {
                     </div>
 
                     {!makeable && (
-                      <div className="mb-3">
-                        <span className="rounded-full bg-error/10 px-2 py-0.5 text-xs font-medium text-error">
-                          Low Stock
-                        </span>
-                      </div>
-                    )}
-
+  <div className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:bg-red-900/10 dark:text-red-400">
+    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className="shrink-0">
+      <path fillRule="evenodd" clipRule="evenodd" d="M8.257 3.099c.765-1.36 2.72-1.36 3.486 0l6.516 11.598c.75 1.334-.213 2.987-1.743 2.987H3.484c-1.53 0-2.493-1.653-1.743-2.987L8.257 3.1zM10 7a1 1 0 011 1v3a1 1 0 11-2 0V8a1 1 0 011-1zm0 7a1 1 0 100 2 1 1 0 000-2z" />
+    </svg>
+    <span>Low stock — restock {item.name} soon</span>
+  </div>
+)}
                     <div>
                       <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Ingredients</h4>
                       <ul className="space-y-1">

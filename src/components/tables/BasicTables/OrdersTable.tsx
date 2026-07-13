@@ -84,22 +84,25 @@ export default function OrdersTable() {
 
         {/* Total */}
         <TableCell className="px-4 py-3 text-gray-500 text-start text-theme-sm dark:text-gray-400">
-          {order.total}
-        </TableCell>
+  ₹{order.total}
+</TableCell>
 
         {/* Status */}
         <TableCell className="px-4 py-3 text-gray-500 text-start text-theme-sm dark:text-gray-400">
           <select
-            value={order.status}
-            onChange={(e) => updateOrderStatus(order.id, e.target.value)}
-            className={`rounded-full px-3 py-1 text-xs font-medium border-0 focus:ring-2 focus:ring-brand-500 cursor-pointer ${
-              order.status === "Delivered"
-                ? "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400"
-                : order.status === "Preparing"
-                ? "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400"
-                : "bg-gray-100 text-gray-700 dark:bg-white/5 dark:text-white/80"
-            }`}
-          >
+  value={order.status}
+  onChange={(e) => updateOrderStatus(order.id, e.target.value)}
+  disabled={order.status === "Delivered"}
+  className={`rounded-full px-3 py-1 text-xs font-medium border-0 focus:ring-2 focus:ring-brand-500 ${
+    order.status === "Delivered" ? "cursor-not-allowed opacity-75" : "cursor-pointer"
+  } ${
+    order.status === "Delivered"
+      ? "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400"
+      : order.status === "Preparing"
+      ? "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400"
+      : "bg-gray-100 text-gray-700 dark:bg-white/5 dark:text-white/80"
+  }`}
+>
             <option value="Placed" className="text-gray-800 bg-white">Placed</option>
             <option value="Preparing" className="text-gray-800 bg-white">Preparing</option>
             <option value="Delivered" className="text-gray-800 bg-white">Delivered</option>
