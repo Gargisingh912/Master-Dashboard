@@ -1,13 +1,131 @@
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
-import { useKitchen } from "../../context/KitchenContext";
+import { useKitchen, MenuIngredient } from "../../context/KitchenContext";
+
+interface IngredientRow {
+  inventoryId: string;
+  quantity: number;
+  unit?: string;
+}
+
+function IngredientEditor({
+  ingredients,
+  inventory,
+  onAdd,
+  onUpdate,
+  onRemove,
+}: {
+  ingredients: IngredientRow[];
+  inventory: any[];
+  onAdd: () => void;
+  onUpdate: (index: number, field: string, value: string) => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div>
+      <div className="flex justify-between items-center mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Ingredients</label>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="text-sm text-brand-500 hover:text-brand-600 font-medium"
+        >
+          + Add Ingredient
+        </button>
+      </div>
+
+      {ingredients.map((ing, index) => (
+        <div key={index} className="flex gap-4 items-center mb-2">
+          <select
+            value={ing.inventoryId}
+            onChange={(e) => onUpdate(index, "inventoryId", e.target.value)}
+            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          >
+            {inventory.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name} ({item.unit})
+              </option>
+            ))}
+          </select>
+          <div className="relative flex items-center">
+            <input
+              type="number"
+              value={ing.quantity || ""}
+              onChange={(e) => onUpdate(index, "quantity", e.target.value)}
+              className="w-24 rounded-lg rounded-r-none border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              min="0"
+              step="0.01"
+              placeholder="Qty"
+            />
+            <select
+              value={ing.unit || inventory.find((i) => i.id === ing.inventoryId)?.unit || "kg"}
+              onChange={(e) => onUpdate(index, "unit", e.target.value)}
+              className="w-28 rounded-lg rounded-l-none border border-l-0 border-gray-300 px-3 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:text-white/90 bg-gray-50 dark:bg-gray-800"
+            >
+              <option value="kg">kg</option>
+              <option value="g">gram</option>
+              <option value="bottles">bottles</option>
+              <option value="pcs">pcs</option>
+              <option value="L">L</option>
+              <option value="ml">ml</option>
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={() => onRemove(index)}
+            className="text-red-500 hover:text-red-700"
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function Menu() {
-  const { menu, inventory, addMenuItem } = useKitchen();
+  const { menu, inventory, addMenuItem, updateMenuItem, setMenuItemAvailability } = useKitchen();
+
   const [showAddForm, setShowAddForm] = useState(false);
   const [newDishName, setNewDishName] = useState("");
   const [newDishPrice, setNewDishPrice] = useState("");
-  const [ingredients, setIngredients] = useState<{ inventoryId: string; quantity: number; unit?: string }[]>([]);
+  const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
+
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [editIngredients, setEditIngredients] = useState<IngredientRow[]>([]);
+
+  // Tracks which items we've already auto-disabled, so repeated renders
+  // don't keep re-firing the same update call once it's already off.
+  const autoDisabledRef = useRef<Set<string>>(new Set());
+
+  // Can this item currently be made twice over, given live inventory?
+  const canMake2x = (item: { ingredients: MenuIngredient[] }) => {
+    if (item.ingredients.length === 0) return true; // no recipe defined — no constraint
+    return item.ingredients.every((ing) => {
+      const invItem = inventory.find((i) => i.id === ing.inventoryId);
+      if (!invItem) return false; // referenced ingredient no longer exists
+      return invItem.quantity >= ing.quantity * 2;
+    });
+  };
+
+  // Auto-disable availability when stock can't support 2x, so the
+  // persisted is_available reflects reality. Manual re-enable is still
+  // allowed afterward — see handleToggleAvailability below.
+  useEffect(() => {
+    menu.forEach((item) => {
+      const makeable = canMake2x(item);
+      if (item.isAvailable && !makeable && !autoDisabledRef.current.has(item.id)) {
+        autoDisabledRef.current.add(item.id);
+        setMenuItemAvailability(item.id, false);
+      }
+      if (makeable) {
+        autoDisabledRef.current.delete(item.id);
+      }
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [inventory, menu]);
 
   const handleAddIngredient = () => {
     if (inventory.length > 0) {
@@ -29,8 +147,7 @@ export default function Menu() {
   };
 
   const handleRemoveIngredient = (index: number) => {
-    const updated = ingredients.filter((_, i) => i !== index);
-    setIngredients(updated);
+    setIngredients(ingredients.filter((_, i) => i !== index));
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -47,6 +164,64 @@ export default function Menu() {
     setNewDishPrice("");
     setIngredients([]);
     setShowAddForm(false);
+  };
+
+  // --- Edit flow ---
+
+  const startEditing = (item: typeof menu[number]) => {
+    setEditingId(item.id);
+    setEditName(item.name);
+    setEditPrice(String(item.price));
+    setEditIngredients(item.ingredients.map((ing) => ({ ...ing })));
+  };
+
+  const cancelEditing = () => {
+    setEditingId(null);
+    setEditName("");
+    setEditPrice("");
+    setEditIngredients([]);
+  };
+
+  const handleEditAddIngredient = () => {
+    if (inventory.length > 0) {
+      setEditIngredients([...editIngredients, { inventoryId: inventory[0].id, quantity: 1, unit: inventory[0].unit || "kg" }]);
+    }
+  };
+
+  const handleEditUpdateIngredient = (index: number, field: string, value: string) => {
+    const updated = [...editIngredients];
+    if (field === "inventoryId") {
+      updated[index].inventoryId = value;
+      updated[index].unit = inventory.find((i) => i.id === value)?.unit || "kg";
+    } else if (field === "quantity") {
+      updated[index].quantity = parseFloat(value) || 0;
+    } else if (field === "unit") {
+      updated[index].unit = value;
+    }
+    setEditIngredients(updated);
+  };
+
+  const handleEditRemoveIngredient = (index: number) => {
+    setEditIngredients(editIngredients.filter((_, i) => i !== index));
+  };
+
+  const handleSaveEdit = (id: string) => {
+    if (!editName || !editPrice) return;
+
+    updateMenuItem(id, {
+      name: editName,
+      price: parseFloat(editPrice),
+      ingredients: editIngredients,
+    });
+
+    cancelEditing();
+  };
+
+  // Manual toggle always allowed — the owner can override the automatic
+  // low-stock disable (e.g. restock arriving shortly), and can also
+  // manually turn an item off regardless of stock levels.
+  const handleToggleAvailability = (item: typeof menu[number]) => {
+    setMenuItemAvailability(item.id, !item.isAvailable);
   };
 
   return (
@@ -90,64 +265,13 @@ export default function Menu() {
                 </div>
               </div>
 
-              <div>
-                <div className="flex justify-between items-center mb-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Ingredients</label>
-                  <button
-                    type="button"
-                    onClick={handleAddIngredient}
-                    className="text-sm text-brand-500 hover:text-brand-600 font-medium"
-                  >
-                    + Add Ingredient
-                  </button>
-                </div>
-                
-                {ingredients.map((ing, index) => (
-                  <div key={index} className="flex gap-4 items-center mb-2">
-                    <select
-                      value={ing.inventoryId}
-                      onChange={(e) => handleUpdateIngredient(index, "inventoryId", e.target.value)}
-                      className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                    >
-                      {inventory.map((item) => (
-                        <option key={item.id} value={item.id}>
-                          {item.name} ({item.unit})
-                        </option>
-                      ))}
-                    </select>
-                    <div className="relative flex items-center">
-                      <input
-                        type="number"
-                        value={ing.quantity || ""}
-                        onChange={(e) => handleUpdateIngredient(index, "quantity", e.target.value)}
-                        className="w-24 rounded-lg rounded-r-none border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                        min="0"
-                        step="0.01"
-                        placeholder="Qty"
-                      />
-                      <select
-                        value={ing.unit || inventory.find((i) => i.id === ing.inventoryId)?.unit || "kg"}
-                        onChange={(e) => handleUpdateIngredient(index, "unit", e.target.value)}
-                        className="w-28 rounded-lg rounded-l-none border border-l-0 border-gray-300 px-3 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:text-white/90 bg-gray-50 dark:bg-gray-800"
-                      >
-                        <option value="kg">kg</option>
-                        <option value="g">gram</option>
-                        <option value="bottles">bottles</option>
-                        <option value="pcs">pcs</option>
-                        <option value="L">L</option>
-                        <option value="ml">ml</option>
-                      </select>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveIngredient(index)}
-                      className="text-red-500 hover:text-red-700"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                ))}
-              </div>
+              <IngredientEditor
+                ingredients={ingredients}
+                inventory={inventory}
+                onAdd={handleAddIngredient}
+                onUpdate={handleUpdateIngredient}
+                onRemove={handleRemoveIngredient}
+              />
 
               <div className="flex justify-end pt-4">
                 <button
@@ -162,30 +286,125 @@ export default function Menu() {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {menu.map((item) => (
-            <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-6 dark:border-white/[0.05] dark:bg-white/[0.03]">
-              <div className="flex justify-between items-start mb-4">
-                <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{item.name}</h3>
-                <span className="font-medium text-brand-500">₹{item.price}</span>
-              </div>
-              <div>
-                <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Ingredients</h4>
-                <ul className="space-y-1">
-                  {item.ingredients.map((ing, idx) => {
-                    const invItem = inventory.find((i) => i.id === ing.inventoryId);
-                    return (
-                      <li key={idx} className="text-sm text-gray-700 dark:text-gray-300 flex justify-between">
-                        <span>{invItem?.name || "Unknown"}</span>
-                        <span className="text-gray-500">
-                          {ing.quantity} {ing.unit || invItem?.unit || ""}
+          {menu.map((item) => {
+            const makeable = canMake2x(item);
+            const isEditing = editingId === item.id;
+
+            return (
+              <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-6 dark:border-white/[0.05] dark:bg-white/[0.03]">
+                {isEditing ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Name</label>
+                        <input
+                          type="text"
+                          value={editName}
+                          onChange={(e) => setEditName(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Price (₹)</label>
+                        <input
+                          type="number"
+                          value={editPrice}
+                          onChange={(e) => setEditPrice(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                        />
+                      </div>
+                    </div>
+
+                    <IngredientEditor
+                      ingredients={editIngredients}
+                      inventory={inventory}
+                      onAdd={handleEditAddIngredient}
+                      onUpdate={handleEditUpdateIngredient}
+                      onRemove={handleEditRemoveIngredient}
+                    />
+
+                    <div className="flex justify-end gap-2 pt-2">
+                      <button
+                        onClick={cancelEditing}
+                        className="rounded-lg border border-gray-300 px-4 py-1.5 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => handleSaveEdit(item.id)}
+                        className="rounded-lg bg-brand-500 px-4 py-1.5 text-sm font-medium text-white hover:bg-brand-600"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="flex justify-between items-start mb-4">
+                      <div>
+                        <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">{item.name}</h3>
+                        <span className="font-medium text-brand-500">₹{item.price}</span>
+                      </div>
+
+                      <div className="flex items-center gap-3">
+                        <button
+                          onClick={() => startEditing(item)}
+                          className="text-sm text-brand-500 hover:text-brand-600 font-medium"
+                        >
+                          Edit
+                        </button>
+
+                        <button
+                          onClick={() => handleToggleAvailability(item)}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                            item.isAvailable ? "bg-success-500" : "bg-gray-300 dark:bg-gray-700"
+                          }`}
+                          title={
+                            item.isAvailable
+                              ? "Available — click to mark unavailable"
+                              : !makeable
+                              ? "Marked unavailable due to low stock — click to override and turn on anyway"
+                              : "Unavailable — click to mark available"
+                          }
+                        >
+                          <span
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                              item.isAvailable ? "translate-x-6" : "translate-x-1"
+                            }`}
+                          />
+                        </button>
+                      </div>
+                    </div>
+
+                    {!makeable && (
+                      <div className="mb-3">
+                        <span className="rounded-full bg-error/10 px-2 py-0.5 text-xs font-medium text-error">
+                          Low Stock
                         </span>
-                      </li>
-                    );
-                  })}
-                </ul>
+                      </div>
+                    )}
+
+                    <div>
+                      <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Ingredients</h4>
+                      <ul className="space-y-1">
+                        {item.ingredients.map((ing, idx) => {
+                          const invItem = inventory.find((i) => i.id === ing.inventoryId);
+                          return (
+                            <li key={idx} className="text-sm text-gray-700 dark:text-gray-300 flex justify-between">
+                              <span>{invItem?.name || "Unknown"}</span>
+                              <span className="text-gray-500">
+                                {ing.quantity} {ing.unit || invItem?.unit || ""}
+                              </span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  </>
+                )}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </>

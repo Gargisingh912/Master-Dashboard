@@ -6,8 +6,7 @@ export interface InventoryItem {
   name: string;
   quantity: number;
   unit: string;
-  alertAt: number;
-  category: string | null;
+  category: string;
 }
 export interface MenuIngredient {
   inventoryId: string;
@@ -20,6 +19,7 @@ export interface MenuItem {
   name: string;
   price: number;
   ingredients: MenuIngredient[];
+  isAvailable: boolean;
 }
 
 export interface OrderItem {
@@ -58,10 +58,11 @@ interface KitchenContextType {
   expenses: Expense[];
   addInventoryItem: (item: Omit<InventoryItem, "id">) => Promise<void>;
   updateInventoryQuantity: (id: string, quantity: number) => Promise<void>;
-  addMenuItem: (item: Omit<MenuItem, "id">) => Promise<void>;
-  addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => Promise<void>;
+addMenuItem: (item: Omit<MenuItem, "id" | "isAvailable">) => Promise<void>;  addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => Promise<void>;
   addExpense: (expense: Omit<Expense, "id" | "date">) => Promise<void>;
   monthlyGoal: number;
+  updateMenuItem: (id: string, updates: { name: string; price: number; ingredients: MenuIngredient[] }) => Promise<void>;
+  setMenuItemAvailability: (id: string, isAvailable: boolean) => Promise<void>;
   setMonthlyGoal: (goal: number) => void;
   updateOrderStatus: (id: string, status: string) => Promise<void>;
   loading: boolean;
@@ -175,15 +176,16 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         .eq('organization_id', currentOrgId);
       if (menuError) console.error("Menu fetch error:", menuError);
       const fetchedMenu: MenuItem[] = (menuData || []).map((item: any) => ({
-        id: item.id,
-        name: item.name,
-        price: item.price,
-        ingredients: (item.menu_ingredients || []).map((ing: any) => ({
-          inventoryId: ing.inventory_item_id,
-          quantity: ing.quantity,
-          unit: 'string',
-        })),
-      }));
+  id: item.id,
+  name: item.name,
+  price: item.price,
+  isAvailable: item.is_available,
+  ingredients: (item.menu_ingredients || []).map((ing: any) => ({
+    inventoryId: ing.inventory_item_id,
+    quantity: ing.quantity,
+    unit: 'string',
+  })),
+}));
       setMenu(fetchedMenu);
 
       const { data: ordersData, error: ordersError } = await supabase
@@ -244,7 +246,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
   name: item.name,
   quantity: item.quantity,
   unit: item.unit,
-  alert_at: item.alertAt,
   category: item.category,
 }).select().single();
 
@@ -279,40 +280,108 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-  const addMenuItem = async (item: Omit<MenuItem, "id">) => {
-    if (!orgId) {
-      setError("No organization context — please log in again.");
+const addMenuItem = async (item: Omit<MenuItem, "id" | "isAvailable">) => {  if (!orgId) {
+    setError("No organization context — please log in again.");
+    return;
+  }
+
+  const { data: menuData, error: menuError } = await supabase.from('menu_items').insert({
+    organization_id: orgId,
+    name: item.name,
+    price: item.price,
+    is_available: true,
+  }).select().single();
+
+  if (menuError) {
+    console.error(menuError);
+    setError(menuError.message);
+    return;
+  }
+
+  if (item.ingredients.length > 0) {
+    const ingredientsToInsert = item.ingredients.map(ing => ({
+      menu_item_id: menuData.id,
+      inventory_item_id: ing.inventoryId,
+      quantity: ing.quantity,
+    }));
+    const { error: ingError } = await supabase.from('menu_ingredients').insert(ingredientsToInsert);
+    if (ingError) {
+      console.error(ingError);
+      setError(ingError.message);
+    }
+  }
+
+  setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true }]);
+};
+  const updateMenuItem = async (
+  id: string,
+  updates: { name: string; price: number; ingredients: MenuIngredient[] }
+) => {
+  const { error: updateError } = await supabase
+    .from('menu_items')
+    .update({ name: updates.name, price: updates.price })
+    .eq('id', id);
+
+  if (updateError) {
+    console.error(updateError);
+    setError(updateError.message);
+    return;
+  }
+
+  // Replace all ingredients for this item — simpler and safer than diffing
+  const { error: deleteError } = await supabase
+    .from('menu_ingredients')
+    .delete()
+    .eq('menu_item_id', id);
+
+  if (deleteError) {
+    console.error(deleteError);
+    setError(deleteError.message);
+    return;
+  }
+
+  if (updates.ingredients.length > 0) {
+    const ingredientsToInsert = updates.ingredients.map(ing => ({
+      menu_item_id: id,
+      inventory_item_id: ing.inventoryId,
+      quantity: ing.quantity,
+    }));
+    const { error: insertError } = await supabase
+      .from('menu_ingredients')
+      .insert(ingredientsToInsert);
+
+    if (insertError) {
+      console.error(insertError);
+      setError(insertError.message);
       return;
     }
+  }
 
-    const { data: menuData, error: menuError } = await supabase.from('menu_items').insert({
-      organization_id: orgId,
-      name: item.name,
-      price: item.price,
-    }).select().single();
+  setMenu(prev =>
+    prev.map(m =>
+      m.id === id
+        ? { ...m, name: updates.name, price: updates.price, ingredients: updates.ingredients }
+        : m
+    )
+  );
+};
 
-    if (menuError) {
-      console.error(menuError);
-      setError(menuError.message);
-      return;
-    }
+const setMenuItemAvailability = async (id: string, isAvailable: boolean) => {
+  const { error } = await supabase
+    .from('menu_items')
+    .update({ is_available: isAvailable })
+    .eq('id', id);
 
-    if (item.ingredients.length > 0) {
-      const ingredientsToInsert = item.ingredients.map(ing => ({
-        menu_item_id: menuData.id,
-        inventory_item_id: ing.inventoryId,
-        quantity: ing.quantity,
-      }));
-      const { error: ingError } = await supabase.from('menu_ingredients').insert(ingredientsToInsert);
-      if (ingError) {
-        console.error(ingError);
-        setError(ingError.message);
-      }
-    }
+  if (error) {
+    console.error(error);
+    setError(error.message);
+    return;
+  }
 
-    setMenu(prev => [...prev, { ...item, id: menuData.id }]);
-  };
-
+  setMenu(prev =>
+    prev.map(m => (m.id === id ? { ...m, isAvailable } : m))
+  );
+};
   const addOrder = async (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => {
     if (!orgId) {
       setError("No organization context — please log in again.");
@@ -460,6 +529,8 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         monthlyGoal,
         setMonthlyGoal,
         updateOrderStatus,
+        updateMenuItem,
+    setMenuItemAvailability,
         loading,
         error,
       }}

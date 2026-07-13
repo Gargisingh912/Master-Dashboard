@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import { useKitchen } from "../../context/KitchenContext";
 import {
@@ -10,16 +10,43 @@ import {
 } from "../../components/ui/table";
 
 export default function Inventory() {
-  const { inventory, addInventoryItem, updateInventoryQuantity, loading, error } = useKitchen();
+  const { inventory, addInventoryItem,updateInventoryQuantity, loading, error } = useKitchen();
   const [showAddForm, setShowAddForm] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemQuantity, setNewItemQuantity] = useState("");
   const [newItemUnit, setNewItemUnit] = useState("g");
-  const [newItemAlertAt, setNewItemAlertAt] = useState("");
   const [newItemCategory, setNewItemCategory] = useState("");
 
-  // Tracks the "amount to add" input per row, keyed by item id
-  const [addStockValues, setAddStockValues] = useState<Record<string, string>>({});
+  const [showSearch, setShowSearch] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+// ^ note: updateInventoryQuantity must be destructured here — confirm it's present
+
+const [updatingStockId, setUpdatingStockId] = useState<string | null>(null);
+const [stockInputValues, setStockInputValues] = useState<Record<string, string>>({});
+
+const handleUpdateStockStart = (id: string) => {
+  setUpdatingStockId(id);
+};
+
+const handleUpdateStockCancel = (id: string) => {
+  setUpdatingStockId(null);
+  setStockInputValues((prev) => ({ ...prev, [id]: "" }));
+};
+
+const handleUpdateStockConfirm = (id: string) => {
+  const raw = stockInputValues[id];
+  const amount = parseFloat(raw);
+  if (!raw || isNaN(amount) || amount === 0) return;
+
+  updateInventoryQuantity(id, amount);
+  setUpdatingStockId(null);
+  setStockInputValues((prev) => ({ ...prev, [id]: "" }));
+};
+  const filteredInventory = useMemo(() => {
+    if (!searchQuery.trim()) return inventory;
+    const q = searchQuery.trim().toLowerCase();
+    return inventory.filter((item) => item.name.toLowerCase().includes(q));
+  }, [inventory, searchQuery]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -29,44 +56,90 @@ export default function Inventory() {
       name: newItemName,
       quantity: parseFloat(newItemQuantity),
       unit: newItemUnit,
-      alertAt: parseFloat(newItemAlertAt) || 5,
-      category: newItemCategory || null,
+      category: newItemCategory,
     });
 
     setNewItemName("");
     setNewItemQuantity("");
     setNewItemUnit("");
-    setNewItemAlertAt("");
     setNewItemCategory("");
     setShowAddForm(false);
   };
 
-  const handleAddStockChange = (id: string, value: string) => {
-    setAddStockValues((prev) => ({ ...prev, [id]: value }));
-  };
-
-  const handleAddStockSubmit = (id: string) => {
-    const raw = addStockValues[id];
-    const amount = parseFloat(raw);
-    if (!raw || isNaN(amount) || amount === 0) return;
-
-    updateInventoryQuantity(id, amount);
-    setAddStockValues((prev) => ({ ...prev, [id]: "" }));
+  const handleToggleSearch = () => {
+    setShowSearch((prev) => {
+      if (prev) setSearchQuery(""); // clear filter when closing search
+      return !prev;
+    });
   };
 
   return (
     <>
       <PageMeta title="Inventory Management | Kitchen Dashboard" description="Manage ingredient inventory" />
       <div className="space-y-6">
-        <div className="flex justify-between items-center">
+        <div className="flex justify-between items-center gap-3">
           <h2 className="text-xl font-bold text-gray-800 dark:text-white/90">Inventory</h2>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            disabled={loading}
-            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {showAddForm ? "Cancel" : "Add New Item"}
-          </button>
+
+          <div className="flex items-center gap-3">
+            {showSearch && (
+              <input
+                type="text"
+                autoFocus
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search by item name..."
+                className="w-56 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              />
+            )}
+
+            <button
+  onClick={handleToggleSearch}
+  aria-label={showSearch ? "Search" : "Search item"}
+  title={showSearch ? "Search" : "Search item"}
+  className="flex items-center justify-center w-10 h-10 rounded-lg border border-gray-300 text-gray-600 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5"
+>
+  {showSearch ? (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 18 18"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        d="M3.75 9H14.25M14.25 9L9.75 4.5M14.25 9L9.75 13.5"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ) : (
+    <svg
+      width="18"
+      height="18"
+      viewBox="0 0 18 18"
+      fill="none"
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <path
+        fillRule="evenodd"
+        clipRule="evenodd"
+        d="M3.04175 8.37363C3.04175 5.87693 5.06798 3.85199 7.56468 3.85199C10.0614 3.85199 12.0876 5.87693 12.0876 8.37363C12.0876 10.8703 10.0614 12.8953 7.56468 12.8953C5.06798 12.8953 3.04175 10.8703 3.04175 8.37363ZM7.56468 2.35199C4.23961 2.35199 1.54175 5.04817 1.54175 8.37363C1.54175 11.6991 4.23961 14.3953 7.56468 14.3953C9.02901 14.3953 10.3696 13.8724 11.4143 13.0028L14.4697 16.0578C14.7626 16.3507 15.2375 16.3507 15.5304 16.0578C15.8233 15.7649 15.8233 15.2901 15.5304 14.9972L12.475 11.9422C13.3462 10.897 13.8697 9.55437 13.8697 8.37363C13.8697 5.04817 11.1898 2.35199 7.56468 2.35199Z"
+        fill="currentColor"
+      />
+    </svg>
+  )}
+</button>
+
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              disabled={loading}
+              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {showAddForm ? "Cancel" : "Add New Item"}
+            </button>
+          </div>
         </div>
 
         {showAddForm && (
@@ -108,17 +181,7 @@ export default function Inventory() {
                   <option value="ml">ml</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Alert At</label>
-                <input
-                  type="number"
-                  value={newItemAlertAt}
-                  onChange={(e) => setNewItemAlertAt(e.target.value)}
-                  placeholder="5"
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                  min="0"
-                />
-              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Category</label>
                 <input
@@ -165,7 +228,7 @@ export default function Inventory() {
                     Stock Quantity
                   </TableCell>
                   <TableCell isHeader className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400">
-                    Add Stock
+                    Update Stock
                   </TableCell>
                 </TableRow>
               </TableHeader>
@@ -186,23 +249,25 @@ export default function Inventory() {
                         <div className="h-4 w-20 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
                       </TableCell>
                       <TableCell className="px-4 py-3">
-                        <div className="h-8 w-28 animate-pulse rounded bg-gray-200 dark:bg-gray-700" />
+                        <div className="h-8 w-8 animate-pulse rounded-full bg-gray-200 dark:bg-gray-700" />
                       </TableCell>
                     </TableRow>
                   ))
-                ) : !error && inventory.length === 0 ? (
+                ) : !error && filteredInventory.length === 0 ? (
                   <TableRow>
                     <TableCell className="px-5 py-8" />
                     <TableCell className="px-5 py-8 text-center text-gray-500 text-theme-sm dark:text-gray-400">
-                      No inventory items yet. Add one to get started.
+                      {searchQuery
+                        ? `No items match "${searchQuery}".`
+                        : "No inventory items yet. Add one to get started."}
                     </TableCell>
                     <TableCell className="px-5 py-8" />
                     <TableCell className="px-5 py-8" />
                     <TableCell className="px-5 py-8" />
                   </TableRow>
                 ) : (
-                  inventory.map((item, index) => {
-                    const isLow = item.quantity <= item.alertAt;
+                  filteredInventory.map((item, index) => {
+                    const isUpdating = updatingStockId === item.id;
                     return (
                       <TableRow key={item.id}>
                         <TableCell className="px-5 py-4 sm:px-6 text-start font-medium text-gray-800 dark:text-white/90">
@@ -214,32 +279,45 @@ export default function Inventory() {
                         <TableCell className="px-4 py-3 text-start text-gray-500 dark:text-gray-400">
                           {item.category || "—"}
                         </TableCell>
-                        <TableCell className="px-4 py-3 text-start">
-                          <span className={`font-medium ${isLow ? 'text-red-500' : 'text-green-500'}`}>
+                        <TableCell className="px-4 py-3 text-start text-gray-500 dark:text-gray-400">
                             {item.quantity} {item.unit}
-                          </span>
-                          {isLow && (
-                            <span className="ml-2 rounded-full bg-error/10 px-2 py-0.5 text-xs font-medium text-error">
-                              Low Stock
-                            </span>
-                          )}
                         </TableCell>
                         <TableCell className="px-4 py-3 text-start">
-                          <div className="flex gap-2 items-center">
-                            <input
-                              type="number"
-                              value={addStockValues[item.id] ?? ""}
-                              onChange={(e) => handleAddStockChange(item.id, e.target.value)}
-                              placeholder={`Qty (${item.unit})`}
-                              className="w-24 rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                            />
+                          {isUpdating ? (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="number"
+                                autoFocus
+                                value={stockInputValues[item.id] ?? ""}
+                                onChange={(e) =>
+                                  setStockInputValues((prev) => ({ ...prev, [item.id]: e.target.value }))
+                                }
+                                placeholder={`Qty (${item.unit})`}
+                                className="w-20 rounded-lg border border-gray-300 px-2 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                              />
+                              <button
+                                onClick={() => handleUpdateStockConfirm(item.id)}
+                                className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-600"
+                              >
+                                Add
+                              </button>
+                              <button
+                                onClick={() => handleUpdateStockCancel(item.id)}
+                                className="text-sm text-gray-500 hover:text-gray-700 dark:text-gray-400"
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
                             <button
-                              onClick={() => handleAddStockSubmit(item.id)}
-                              className="rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white hover:bg-brand-600"
+                              onClick={() => handleUpdateStockStart(item.id)}
+                              aria-label={`Update stock for ${item.name}`}
+                              title="Update stock"
+                              className="flex items-center justify-center w-8 h-8 rounded-full bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                             >
-                              Add
+                              +
                             </button>
-                          </div>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

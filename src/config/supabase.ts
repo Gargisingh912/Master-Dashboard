@@ -46,6 +46,7 @@ export interface MenuItemRow {
   organization_id: string;
   name: string;
   price: number;
+  is_available: boolean;
   created_at: string;
   updated_at: string;
 }
