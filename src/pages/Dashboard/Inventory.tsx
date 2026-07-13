@@ -14,7 +14,7 @@ export default function Inventory() {
   const [showAddForm, setShowAddForm] = useState(false);
   const [newItemName, setNewItemName] = useState("");
   const [newItemQuantity, setNewItemQuantity] = useState("");
-  const [newItemUnit, setNewItemUnit] = useState("");
+  const [newItemUnit, setNewItemUnit] = useState("g");
   const [newItemAlertAt, setNewItemAlertAt] = useState("");
   const [newItemCategory, setNewItemCategory] = useState("");
 
@@ -104,7 +104,6 @@ export default function Inventory() {
                   <option value="kg">kg</option>
                   <option value="g">gram</option>
                   <option value="bottles">bottles</option>
-                  <option value="pcs">pcs</option>
                   <option value="L">L</option>
                   <option value="ml">ml</option>
                 </select>

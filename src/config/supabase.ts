@@ -62,6 +62,9 @@ export interface OrderRow {
   id: string;
   organization_id: string;
   customer_name: string;
+  customer_contact: string | null;
+  customer_email: string | null;
+  customer_dob: string | null;
   discount: number;
   total: number;
   status: string;

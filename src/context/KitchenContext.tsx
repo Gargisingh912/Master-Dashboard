@@ -194,7 +194,11 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (ordersError) console.error("Orders fetch error:", ordersError);
       const fetchedOrders: Order[] = (ordersData || []).map((o: any) => ({
         id: o.id,
-        customer: { name: o.customer_name },
+        customer: { name: o.customer_name,
+          contact: o.customer_contact,
+    email: o.customer_email,
+    dob: o.customer_dob,
+        },
         items: (o.order_items || []).map((oi: any) => ({
           menuItemId: oi.menu_item_id,
           quantity: oi.quantity,
@@ -355,12 +359,15 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
 
     const { data: orderData, error: orderError } = await supabase.from('orders').insert({
-      organization_id: orgId,
-      customer_name: customerName,
-      discount,
-      total,
-      status: 'Placed',
-    }).select().single();
+  organization_id: orgId,
+  customer_name: customerName,
+  customer_contact: contact ?? null,
+  customer_email: email ?? null,
+  customer_dob: dob ?? null,
+  discount,
+  total,
+  status: 'Placed',
+}).select().single();
 
     if (orderError) {
       console.error(orderError);
