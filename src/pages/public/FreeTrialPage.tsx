@@ -17,7 +17,7 @@ const FreeTrialPage: React.FC = () => {
     <div className="min-h-screen bg-white py-12 px-4 flex flex-col items-center justify-center text-center">
       <div className="max-w-md w-full mx-auto space-y-8">
         <h1 className="text-4xl font-bold text-black">
-          You have 3 days free trial to enjoy
+          You have 7 days free trial to enjoy
         </h1>
         <p className="text-gray-600">
           Explore all the features of our platform for the next 3 days, completely free!

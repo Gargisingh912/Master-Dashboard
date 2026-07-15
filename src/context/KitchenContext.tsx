@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import { supabase } from "../config/supabase";
+import { useAuth } from "../hooks/useAuth";
 
 export interface InventoryItem {
   id: string;
@@ -7,6 +8,7 @@ export interface InventoryItem {
   quantity: number;
   unit: string;
   category: string;
+  alertAt?: number;
 }
 export interface MenuIngredient {
   inventoryId: string;
@@ -58,7 +60,8 @@ interface KitchenContextType {
   expenses: Expense[];
   addInventoryItem: (item: Omit<InventoryItem, "id">) => Promise<void>;
   updateInventoryQuantity: (id: string, quantity: number) => Promise<void>;
-addMenuItem: (item: Omit<MenuItem, "id" | "isAvailable">) => Promise<void>;  addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => Promise<void>;
+  addMenuItem: (item: Omit<MenuItem, "id" | "isAvailable">) => Promise<void>;
+  addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => Promise<void>;
   addExpense: (expense: Omit<Expense, "id" | "date">) => Promise<void>;
   monthlyGoal: number;
   updateMenuItem: (id: string, updates: { name: string; price: number; ingredients: MenuIngredient[] }) => Promise<void>;
@@ -73,6 +76,7 @@ const KitchenContext = createContext<KitchenContextType | undefined>(undefined);
 
 export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
+  const { user, loading: authLoading } = useAuth();
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
@@ -81,42 +85,17 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [error, setError] = useState<string | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
 
-  useEffect(() => {
-    fetchInitialData();
-
-    const channel = supabase
-      .channel('kitchen-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_items' }, () => fetchInitialData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => fetchInitialData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_ingredients' }, () => fetchInitialData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchInitialData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchInitialData(true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => fetchInitialData(true))
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
   // Resolves the CURRENT LOGGED-IN USER's organization_id via their
   // profile row — this is the same lookup your RLS policies do
   // internally (organization_id IN (SELECT organization_id FROM
   // profiles WHERE id = auth.uid())). Previously this grabbed
   // whichever organization was first in the table, which meant a
   // second restaurant's user could resolve to the wrong org.
-  const resolveOrgId = async (): Promise<string | null> => {
-    const { data: userData, error: userError } = await supabase.auth.getUser();
-
-    if (userError || !userData?.user) {
-      console.error("No authenticated user found:", userError);
-      return null;
-    }
-
+  const resolveOrgId = async (userId: string): Promise<string | null> => {
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('organization_id')
-      .eq('id', userData.user.id)
+      .eq('id', userId)
       .maybeSingle();
 
     if (profileError) {
@@ -132,12 +111,12 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     return profile.organization_id;
   };
 
-  const fetchInitialData = async (silent = false) => {
+  const fetchInitialData = async (userId: string, silent = false) => {
     try {
       if (!silent) setLoading(true);
       setError(null);
 
-      const currentOrgId = orgId ?? (await resolveOrgId());
+      const currentOrgId = orgId ?? (await resolveOrgId(userId));
 
       if (!currentOrgId) {
         setError("Could not determine your organization. Please log in again.");
@@ -161,13 +140,13 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         .eq('organization_id', currentOrgId);
       if (invError) console.error("Inventory fetch error:", invError);
       const fetchedInventory: InventoryItem[] = (invData || []).map((item: any) => ({
-  id: item.id,
-  name: item.name,
-  quantity: item.quantity,
-  unit: item.unit,
-  alertAt: item.alert_at,
-  category: item.category,
-}));
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        unit: item.unit,
+        alertAt: item.alert_at,
+        category: item.category,
+      }));
       setInventory(fetchedInventory);
 
       const { data: menuData, error: menuError } = await supabase
@@ -176,16 +155,16 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         .eq('organization_id', currentOrgId);
       if (menuError) console.error("Menu fetch error:", menuError);
       const fetchedMenu: MenuItem[] = (menuData || []).map((item: any) => ({
-  id: item.id,
-  name: item.name,
-  price: item.price,
-  isAvailable: item.is_available,
-  ingredients: (item.menu_ingredients || []).map((ing: any) => ({
-    inventoryId: ing.inventory_item_id,
-    quantity: ing.quantity,
-    unit: 'string',
-  })),
-}));
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        isAvailable: item.is_available,
+        ingredients: (item.menu_ingredients || []).map((ing: any) => ({
+          inventoryId: ing.inventory_item_id,
+          quantity: ing.quantity,
+          unit: ing.unit ?? undefined,
+        })),
+      }));
       setMenu(fetchedMenu);
 
       const { data: ordersData, error: ordersError } = await supabase
@@ -196,10 +175,11 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (ordersError) console.error("Orders fetch error:", ordersError);
       const fetchedOrders: Order[] = (ordersData || []).map((o: any) => ({
         id: o.id,
-        customer: { name: o.customer_name,
+        customer: {
+          name: o.customer_name,
           contact: o.customer_contact,
-    email: o.customer_email,
-    dob: o.customer_dob,
+          email: o.customer_email,
+          dob: o.customer_dob,
         },
         items: (o.order_items || []).map((oi: any) => ({
           menuItemId: oi.menu_item_id,
@@ -235,28 +215,52 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
+  useEffect(() => {
+    // Wait until session restoration finishes and we have a confirmed user.
+    // Calling fetchInitialData before this resolves is what caused
+    // "AuthSessionMissingError" on page load/refresh — auth.getUser() (or
+    // the profile lookup dependent on it) ran before the session existed.
+    if (authLoading || !user) return;
+
+    fetchInitialData(user.id);
+
+    const channel = supabase
+      .channel('kitchen-updates')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_items' }, () => fetchInitialData(user.id, true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => fetchInitialData(user.id, true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_ingredients' }, () => fetchInitialData(user.id, true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchInitialData(user.id, true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchInitialData(user.id, true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => fetchInitialData(user.id, true))
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [authLoading, user]);
+
   const addInventoryItem = async (item: Omit<InventoryItem, "id">) => {
-  if (!orgId) {
-    setError("No organization context — please log in again.");
-    return;
-  }
+    if (!orgId) {
+      setError("No organization context — please log in again.");
+      return;
+    }
 
-  const { data, error } = await supabase.from('inventory_items').insert({
-  organization_id: orgId,
-  name: item.name,
-  quantity: item.quantity,
-  unit: item.unit,
-  category: item.category,
-}).select().single();
+    const { data, error } = await supabase.from('inventory_items').insert({
+      organization_id: orgId,
+      name: item.name,
+      quantity: item.quantity,
+      unit: item.unit,
+      category: item.category,
+    }).select().single();
 
-  if (error) {
-    console.error(error);
-    setError(error.message);
-    return;
-  }
+    if (error) {
+      console.error(error);
+      setError(error.message);
+      return;
+    }
 
-  setInventory(prev => [...prev, { ...item, id: data.id }]);
-};
+    setInventory(prev => [...prev, { ...item, id: data.id }]);
+  };
 
   // Delegates to a Postgres function (adjust_inventory_quantity) so the
   // increment happens atomically against the DB's current row, not
@@ -266,8 +270,8 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
   //
   // No optimistic local update here on purpose — the postgres_changes
   // subscription on 'inventory_items' (see useEffect above) will fire
-  // once the row changes and call fetchInitialData(true), which is the
-  // actual source of truth for local state.
+  // once the row changes and call fetchInitialData(user.id, true), which
+  // is the actual source of truth for local state.
   const updateInventoryQuantity = async (id: string, quantity: number) => {
     const { error } = await supabase.rpc('adjust_inventory_quantity', {
       item_id: id,
@@ -280,108 +284,111 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
   };
 
-const addMenuItem = async (item: Omit<MenuItem, "id" | "isAvailable">) => {  if (!orgId) {
-    setError("No organization context — please log in again.");
-    return;
-  }
-
-  const { data: menuData, error: menuError } = await supabase.from('menu_items').insert({
-    organization_id: orgId,
-    name: item.name,
-    price: item.price,
-    is_available: true,
-  }).select().single();
-
-  if (menuError) {
-    console.error(menuError);
-    setError(menuError.message);
-    return;
-  }
-
-  if (item.ingredients.length > 0) {
-    const ingredientsToInsert = item.ingredients.map(ing => ({
-      menu_item_id: menuData.id,
-      inventory_item_id: ing.inventoryId,
-      quantity: ing.quantity,
-    }));
-    const { error: ingError } = await supabase.from('menu_ingredients').insert(ingredientsToInsert);
-    if (ingError) {
-      console.error(ingError);
-      setError(ingError.message);
-    }
-  }
-
-  setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true }]);
-};
-  const updateMenuItem = async (
-  id: string,
-  updates: { name: string; price: number; ingredients: MenuIngredient[] }
-) => {
-  const { error: updateError } = await supabase
-    .from('menu_items')
-    .update({ name: updates.name, price: updates.price })
-    .eq('id', id);
-
-  if (updateError) {
-    console.error(updateError);
-    setError(updateError.message);
-    return;
-  }
-
-  // Replace all ingredients for this item — simpler and safer than diffing
-  const { error: deleteError } = await supabase
-    .from('menu_ingredients')
-    .delete()
-    .eq('menu_item_id', id);
-
-  if (deleteError) {
-    console.error(deleteError);
-    setError(deleteError.message);
-    return;
-  }
-
-  if (updates.ingredients.length > 0) {
-    const ingredientsToInsert = updates.ingredients.map(ing => ({
-      menu_item_id: id,
-      inventory_item_id: ing.inventoryId,
-      quantity: ing.quantity,
-    }));
-    const { error: insertError } = await supabase
-      .from('menu_ingredients')
-      .insert(ingredientsToInsert);
-
-    if (insertError) {
-      console.error(insertError);
-      setError(insertError.message);
+  const addMenuItem = async (item: Omit<MenuItem, "id" | "isAvailable">) => {
+    if (!orgId) {
+      setError("No organization context — please log in again.");
       return;
     }
-  }
 
-  setMenu(prev =>
-    prev.map(m =>
-      m.id === id
-        ? { ...m, name: updates.name, price: updates.price, ingredients: updates.ingredients }
-        : m
-    )
-  );
-};
+    const { data: menuData, error: menuError } = await supabase.from('menu_items').insert({
+      organization_id: orgId,
+      name: item.name,
+      price: item.price,
+      is_available: true,
+    }).select().single();
 
-const setMenuItemAvailability = async (id: string, isAvailable: boolean) => {
-  const { error } = await supabase
-    .from('menu_items')
-    .update({ is_available: isAvailable })
-    .eq('id', id);
+    if (menuError) {
+      console.error(menuError);
+      setError(menuError.message);
+      return;
+    }
 
-  if (error) {
-    console.error(error);
-    setError(error.message);
-    return;
-  }
+    if (item.ingredients.length > 0) {
+      const ingredientsToInsert = item.ingredients.map(ing => ({
+        menu_item_id: menuData.id,
+        inventory_item_id: ing.inventoryId,
+        quantity: ing.quantity,
+      }));
+      const { error: ingError } = await supabase.from('menu_ingredients').insert(ingredientsToInsert);
+      if (ingError) {
+        console.error(ingError);
+        setError(ingError.message);
+      }
+    }
 
-  setMenu(prev =>
-    prev.map(m => (m.id === id ? { ...m, isAvailable } : m))
-  );
-};
+    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true }]);
+  };
+
+  const updateMenuItem = async (
+    id: string,
+    updates: { name: string; price: number; ingredients: MenuIngredient[] }
+  ) => {
+    const { error: updateError } = await supabase
+      .from('menu_items')
+      .update({ name: updates.name, price: updates.price })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error(updateError);
+      setError(updateError.message);
+      return;
+    }
+
+    // Replace all ingredients for this item — simpler and safer than diffing
+    const { error: deleteError } = await supabase
+      .from('menu_ingredients')
+      .delete()
+      .eq('menu_item_id', id);
+
+    if (deleteError) {
+      console.error(deleteError);
+      setError(deleteError.message);
+      return;
+    }
+
+    if (updates.ingredients.length > 0) {
+      const ingredientsToInsert = updates.ingredients.map(ing => ({
+        menu_item_id: id,
+        inventory_item_id: ing.inventoryId,
+        quantity: ing.quantity,
+      }));
+      const { error: insertError } = await supabase
+        .from('menu_ingredients')
+        .insert(ingredientsToInsert);
+
+      if (insertError) {
+        console.error(insertError);
+        setError(insertError.message);
+        return;
+      }
+    }
+
+    setMenu(prev =>
+      prev.map(m =>
+        m.id === id
+          ? { ...m, name: updates.name, price: updates.price, ingredients: updates.ingredients }
+          : m
+      )
+    );
+  };
+
+  const setMenuItemAvailability = async (id: string, isAvailable: boolean) => {
+    const { error } = await supabase
+      .from('menu_items')
+      .update({ is_available: isAvailable })
+      .eq('id', id);
+
+    if (error) {
+      console.error(error);
+      setError(error.message);
+      return;
+    }
+
+    setMenu(prev =>
+      prev.map(m => (m.id === id ? { ...m, isAvailable } : m))
+    );
+  };
+
   const addOrder = async (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => {
     if (!orgId) {
       setError("No organization context — please log in again.");
@@ -428,15 +435,15 @@ const setMenuItemAvailability = async (id: string, isAvailable: boolean) => {
     }
 
     const { data: orderData, error: orderError } = await supabase.from('orders').insert({
-  organization_id: orgId,
-  customer_name: customerName,
-  customer_contact: contact ?? null,
-  customer_email: email ?? null,
-  customer_dob: dob ?? null,
-  discount,
-  total,
-  status: 'Placed',
-}).select().single();
+      organization_id: orgId,
+      customer_name: customerName,
+      customer_contact: contact ?? null,
+      customer_email: email ?? null,
+      customer_dob: dob ?? null,
+      discount,
+      total,
+      status: 'Placed',
+    }).select().single();
 
     if (orderError) {
       console.error(orderError);
@@ -530,7 +537,7 @@ const setMenuItemAvailability = async (id: string, isAvailable: boolean) => {
         setMonthlyGoal,
         updateOrderStatus,
         updateMenuItem,
-    setMenuItemAvailability,
+        setMenuItemAvailability,
         loading,
         error,
       }}
