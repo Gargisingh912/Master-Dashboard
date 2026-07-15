@@ -1,8 +1,14 @@
-// src/config/permissions.js
-export const FEATURES = {
+// src/config/permissions.ts
+
+export type Plan = 'trial' | 'standard' | 'premium' | 'enterprise';
+
+// Broader type for anything that might be passed in from auth state,
+// including the superadmin override
+export type PlanOrRole = Plan | 'superadmin';
+
+export const FEATURES: Record<Plan, string[]> = {
   trial: [
     'overview', 'orders', 'offline_orders', 'inventory',
-    'social_view', 'basic_reports',
     // Give them everything for 7 days to hook them
     'ff_discounts', 'advanced_analytics', 'qr_ordering',
   ],
@@ -26,7 +32,13 @@ export const FEATURES = {
   ],
 };
 
-export function hasFeature(plan, feature) {
-  if (plan === "superadmin") return true;
+export function hasFeature(plan: PlanOrRole, feature: string): boolean {
+  if (plan === 'superadmin') return true;
   return FEATURES[plan]?.includes(feature) ?? false;
+}
+
+// Helper to safely check if a string is a real Plan key
+// (useful if `plan` is coming from the DB as a raw string)
+export function isValidPlan(value: string): value is Plan {
+  return value in FEATURES;
 }
