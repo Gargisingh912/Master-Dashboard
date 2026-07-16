@@ -83,8 +83,10 @@ function IngredientEditor({
   );
 }
 
+import { Trash2 } from "lucide-react";
+
 export default function Menu() {
-  const { menu, inventory, addMenuItem, updateMenuItem, setMenuItemAvailability } = useKitchen();
+  const { menu, inventory, addMenuItem, updateMenuItem, deleteMenuItem, setMenuItemAvailability } = useKitchen();
 
   const [showAddForm, setShowAddForm] = useState(false);
   const [newDishName, setNewDishName] = useState("");
@@ -226,6 +228,12 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
   // manually turn an item off regardless of stock levels.
   const handleToggleAvailability = (item: typeof menu[number]) => {
     setMenuItemAvailability(item.id, !item.isAvailable);
+  };
+
+  const handleDelete = (id: string) => {
+    if (window.confirm("Are you sure you want to delete this dish?")) {
+      deleteMenuItem(id);
+    }
   };
 
   return (
@@ -378,6 +386,13 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
                               item.isAvailable ? "translate-x-6" : "translate-x-1"
                             }`}
                           />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(item.id)}
+                          className="text-red-500 hover:text-red-700 ml-2"
+                          title="Delete Dish"
+                        >
+                          <Trash2 size={18} />
                         </button>
                       </div>
                     </div>

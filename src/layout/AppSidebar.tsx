@@ -307,7 +307,7 @@ const AppSidebar: React.FC = () => {
         className={`py-8 flex ${!isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
           }`}
       >
-        <Link to="/overview">
+        <Link to="/dashboard">
           {isExpanded || isHovered || isMobileOpen ? (
             <span className="text-xl font-bold text-gray-800 dark:text-white/90">
               {kitchenName}

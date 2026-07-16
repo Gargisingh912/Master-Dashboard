@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { supabase } from "../../config/supabase";
-
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 interface MenuItem {
   id: string;
   name: string;
@@ -26,7 +27,7 @@ const OrderPage: React.FC = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
-  const [dob, setDob] = useState("");
+  const [dob, setDob] = useState<Date | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
 
   const [submittedOrder, setSubmittedOrder] = useState<{ order_number: number; total: number } | null>(null);
@@ -61,7 +62,11 @@ const OrderPage: React.FC = () => {
       setName(data.name || "");
       setEmail(data.email || "");
       setAddress(data.address || "");
-      setDob(data.dob || "");
+      if (data.dob) {
+        setDob(new Date(data.dob));
+      } else {
+        setDob(null);
+      }
     }
     setLookupDone(true);
   };
@@ -104,6 +109,10 @@ const OrderPage: React.FC = () => {
       setError("Please enter your name and contact number.");
       return;
     }
+    if (contact.trim().length !== 10) {
+      setError("Please enter a valid 10-digit phone number.");
+      return;
+    }
     if (cartLines.length === 0) {
       setError("Your cart is empty.");
       return;
@@ -122,7 +131,7 @@ const OrderPage: React.FC = () => {
             name: name.trim(),
             email: email.trim() || "no-email@provided.com",
             address: address.trim() || null,
-            dob: dob || null,
+            dob: dob ? dob.toISOString().split('T')[0] : null,
           },
           { onConflict: "organization_id,contact_number" }
         );
@@ -138,7 +147,7 @@ const OrderPage: React.FC = () => {
             customer_name: name.trim(),
             customer_contact: contact.trim(),
             customer_email: email.trim() || null,
-            customer_dob: dob || null,
+            customer_dob: dob ? dob.toISOString().split('T')[0] : null,
             discount: 0,
             total,
             status: "Placed",
@@ -169,18 +178,18 @@ const OrderPage: React.FC = () => {
   };
 
   if (loading) {
-    return <div style={{ padding: 40, textAlign: "center" }}>Loading menu...</div>;
+    return <div className="p-10 text-center text-gray-500">Loading menu...</div>;
   }
 
   if (submittedOrder) {
     return (
-      <div style={{ maxWidth: 420, margin: "0 auto", padding: 32, textAlign: "center" }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 8 }}>Order Placed!</h1>
-        <p style={{ fontSize: 40, fontWeight: 900, margin: "16px 0" }}>#{submittedOrder.order_number}</p>
-        <p style={{ color: "#555", marginBottom: 16 }}>
+      <div className="max-w-md mx-auto p-8 text-center bg-white rounded-xl shadow-theme-sm mt-10 border border-gray-200">
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">Order Placed!</h1>
+        <p className="text-4xl font-black text-brand-500 my-4">#{submittedOrder.order_number}</p>
+        <p className="text-gray-600 mb-4">
           Total: ₹{submittedOrder.total.toFixed(2)} — pay when you receive your order.
         </p>
-        <p style={{ fontSize: 12, color: "#888" }}>
+        <p className="text-xs text-gray-400">
           📸 Please take a screenshot of this screen as your receipt.
         </p>
       </div>
@@ -188,113 +197,88 @@ const OrderPage: React.FC = () => {
   }
 
   return (
-    <div style={{ maxWidth: 480, margin: "0 auto", padding: "24px 16px" }}>
-      <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 16 }}>Order Menu</h1>
+    <div className="max-w-md mx-auto p-4 sm:p-6 bg-gray-50 min-h-screen">
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">Order Menu</h1>
 
-      {error && <p style={{ color: "red", marginBottom: 12 }}>{error}</p>}
+      {error && <p className="text-red-500 text-sm mb-4 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>}
 
-      <div style={{ marginBottom: 20, border: "1px solid #eee", borderRadius: 12, padding: 16 }}>
-        <label style={{ fontSize: 13, fontWeight: 600 }}>Contact Number</label>
-        <div style={{ display: "flex", gap: 8, marginTop: 6 }}>
+      <div className="mb-6 bg-white border border-gray-200 rounded-xl p-5 shadow-theme-xs">
+        <label className="block text-sm font-semibold text-gray-700">Contact Number</label>
+        <div className="flex gap-3 mt-2">
           <input
             value={contact}
             onChange={(e) => setContact(e.target.value)}
             placeholder="Your phone number"
-            style={inputStyle}
+            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden"
           />
-          <button onClick={handleContactLookup} style={secondaryBtn}>
+          <button onClick={handleContactLookup} className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-semibold rounded-lg transition-colors">
             Find Me
           </button>
         </div>
 
         {lookupDone && (
-          <div style={{ marginTop: 12, display: "flex", flexDirection: "column", gap: 8 }}>
-            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" style={inputStyle} />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optional)" style={inputStyle} />
-            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address (optional)" style={inputStyle} />
-            <input type="date" value={dob} onChange={(e) => setDob(e.target.value)} style={inputStyle} />
+          <div className="mt-4 flex flex-col gap-3">
+            <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden" />
+            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optional)" className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden" />
+            <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address (optional)" className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden" />
+            <div className="relative z-10 w-full">
+              <DatePicker
+                selected={dob}
+                onChange={(date: Date | null) => setDob(date)}
+                dateFormat="yyyy-MM-dd"
+                placeholderText="Date of Birth"
+                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden"
+                showMonthDropdown
+                showYearDropdown
+                dropdownMode="select"
+              />
+            </div>
           </div>
         )}
       </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 20 }}>
+      <div className="flex flex-col gap-3 mb-24">
         {menuItems.map((item) => (
           <div
             key={item.id}
-            style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              border: "1px solid #eee",
-              borderRadius: 10,
-              padding: "10px 14px",
-            }}
+            className="flex justify-between items-center bg-white border border-gray-200 rounded-xl p-4 shadow-theme-xs transition-transform hover:scale-[1.01]"
           >
             <div>
-              <p style={{ fontWeight: 600, fontSize: 14 }}>{item.name}</p>
-              <p style={{ fontSize: 12, color: "#888" }}>₹{item.price.toFixed(2)}</p>
+              <p className="font-semibold text-gray-800">{item.name}</p>
+              <p className="text-sm font-medium text-brand-500 mt-1">₹{item.price.toFixed(2)}</p>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {cart[item.id] && (
+            <div className="flex items-center gap-3 bg-gray-50 rounded-full p-1 border border-gray-100">
+              {cart[item.id] ? (
                 <>
-                  <button onClick={() => removeFromCart(item.id)} style={qtyBtn}>−</button>
-                  <span>{cart[item.id].quantity}</span>
+                  <button onClick={() => removeFromCart(item.id)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-gray-600 shadow-xs hover:bg-gray-50 transition-colors">−</button>
+                  <span className="w-6 text-center font-semibold text-gray-800">{cart[item.id].quantity}</span>
+                  <button onClick={() => addToCart(item)} className="w-8 h-8 flex items-center justify-center rounded-full bg-brand-500 text-white shadow-xs hover:bg-brand-600 transition-colors">+</button>
                 </>
+              ) : (
+                <button onClick={() => addToCart(item)} className="px-4 py-1.5 rounded-full bg-brand-50 text-brand-600 font-medium text-sm hover:bg-brand-100 transition-colors">Add</button>
               )}
-              <button onClick={() => addToCart(item)} style={qtyBtn}>+</button>
             </div>
           </div>
         ))}
       </div>
 
       {cartLines.length > 0 && (
-        <div style={{ position: "sticky", bottom: 0, background: "#fff", borderTop: "1px solid #eee", padding: "12px 0" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10, fontWeight: 700 }}>
-            <span>Total</span>
-            <span>₹{total.toFixed(2)}</span>
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-gray-200 z-50">
+          <div className="max-w-md mx-auto">
+            <div className="flex justify-between mb-3 font-bold text-gray-800">
+              <span>Total Amount</span>
+              <span className="text-brand-500">₹{total.toFixed(2)}</span>
+            </div>
+            <button onClick={handleSubmitOrder} disabled={submitting} className="w-full rounded-xl bg-brand-500 py-3.5 text-base font-bold text-white shadow-theme-md hover:bg-brand-600 disabled:opacity-70 disabled:cursor-not-allowed transition-all">
+              {submitting ? "Placing order..." : "Place Order"}
+            </button>
           </div>
-          <button onClick={handleSubmitOrder} disabled={submitting} style={{ ...primaryBtn, width: "100%" }}>
-            {submitting ? "Placing order..." : "Place Order"}
-          </button>
         </div>
       )}
     </div>
   );
 };
 
-const inputStyle: React.CSSProperties = {
-  border: "1px solid #ddd",
-  borderRadius: 8,
-  padding: "8px 10px",
-  fontSize: 13,
-  flex: 1,
-};
 
-const primaryBtn: React.CSSProperties = {
-  background: "#111",
-  color: "#fff",
-  border: "none",
-  borderRadius: 8,
-  padding: "10px 16px",
-  fontSize: 14,
-  fontWeight: 700,
-  cursor: "pointer",
-};
-
-const secondaryBtn: React.CSSProperties = {
-  ...primaryBtn,
-  background: "#eee",
-  color: "#111",
-};
-
-const qtyBtn: React.CSSProperties = {
-  width: 26,
-  height: 26,
-  borderRadius: "50%",
-  border: "1px solid #ddd",
-  background: "#fff",
-  cursor: "pointer",
-  fontSize: 14,
-};
 
 export default OrderPage;

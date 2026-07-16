@@ -2,15 +2,19 @@ import React, { useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import OrdersTable from "../../components/tables/BasicTables/OrdersTable";
 import { useKitchen } from "../../context/KitchenContext";
+import DatePicker from "react-datepicker";
+import "react-datepicker/dist/react-datepicker.css";
 
 export default function Orders() {
   const { menu, orders, addOrder } = useKitchen();
   const [contact, setContact] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [email, setEmail] = useState("");
-  const [dob, setDob] = useState("");
+  const [dob, setDob] = useState<Date | null>(null);
   const [discount, setDiscount] = useState(0);
   const [orderItems, setOrderItems] = useState<{ menuItemId: string; quantity: number }[]>([]);
+
+  const availableMenu = menu.filter(m => m.isAvailable);
 
   const handleContactChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newContact = e.target.value;
@@ -21,14 +25,14 @@ export default function Orders() {
       if (existingCustomer) {
         if (existingCustomer.name) setCustomerName(existingCustomer.name);
         if (existingCustomer.email) setEmail(existingCustomer.email);
-        if (existingCustomer.dob) setDob(existingCustomer.dob);
+        if (existingCustomer.dob) setDob(new Date(existingCustomer.dob));
       }
     }
   };
 
   const handleAddItem = () => {
-    if (menu.length > 0) {
-      setOrderItems([...orderItems, { menuItemId: menu[0].id, quantity: 1 }]);
+    if (availableMenu.length > 0) {
+      setOrderItems([...orderItems, { menuItemId: availableMenu[0].id, quantity: 1 }]);
     }
   };
 
@@ -48,14 +52,29 @@ export default function Orders() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!contact || !customerName || orderItems.length === 0) return;
+    if (!contact || !customerName || orderItems.length === 0 || contact.length !== 10) {
+      if (contact.length !== 10) {
+        alert("Please enter a valid 10-digit phone number.");
+      }
+      return;
+    }
 
-    addOrder(customerName, orderItems, discount, contact, email, dob);
+    const mergedItems = orderItems.reduce((acc, curr) => {
+      const existing = acc.find(item => item.menuItemId === curr.menuItemId);
+      if (existing) {
+        existing.quantity += curr.quantity;
+      } else {
+        acc.push({ ...curr });
+      }
+      return acc;
+    }, [] as { menuItemId: string; quantity: number }[]);
+
+    addOrder(customerName, mergedItems, discount, contact, email, dob ? dob.toISOString().split('T')[0] : "");
     
     setContact("");
     setCustomerName("");
     setEmail("");
-    setDob("");
+    setDob(null);
     setDiscount(0);
     setOrderItems([]);
   };
@@ -105,13 +124,18 @@ export default function Orders() {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date of Birth</label>
-                <input
-                  type="date"
-                  value={dob}
-                  onChange={(e) => setDob(e.target.value)}
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                  required
-                />
+                <div className="relative z-10 w-full">
+                  <DatePicker
+                    selected={dob}
+                    onChange={(date: Date | null) => setDob(date)}
+                    dateFormat="yyyy-MM-dd"
+                    placeholderText="Select Date of Birth"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    showMonthDropdown
+                    showYearDropdown
+                    dropdownMode="select"
+                  />
+                </div>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Discount (%)</label>
@@ -156,7 +180,7 @@ export default function Orders() {
                     onChange={(e) => handleUpdateItem(index, "menuItemId", e.target.value)}
                     className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                   >
-                    {menu.map((m) => (
+                    {availableMenu.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name} - ₹{m.price}
                       </option>

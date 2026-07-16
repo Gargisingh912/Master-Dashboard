@@ -2,14 +2,21 @@ import React, { useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import { useKitchen } from "../../context/KitchenContext";
 import FinanceChart from "../../components/charts/bar/FinanceChart";
+import { Edit, Trash2, X, Check } from "lucide-react";
 
 export default function Finance() {
-  const { orders, expenses, addExpense, monthlyGoal, setMonthlyGoal } = useKitchen();
+  const { orders, expenses, addExpense, monthlyGoal, setMonthlyGoal, menu } = useKitchen();
   const [isEditingGoal, setIsEditingGoal] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState("Ingredients");
+
+  const { updateExpense, deleteExpense } = useKitchen();
+  const [editingExpenseId, setEditingExpenseId] = useState<string | null>(null);
+  const [editingDescription, setEditingDescription] = useState("");
+  const [editingAmount, setEditingAmount] = useState("");
+  const [editingCategory, setEditingCategory] = useState("Ingredients");
 
   const totalIncome = orders.reduce((acc, order) => {
     const amount = typeof order.total === 'number' ? order.total : parseFloat(String(order.total).replace(/[^0-9.]/g, '')) || 0;
@@ -22,7 +29,14 @@ export default function Finance() {
   // Calculate Friends and Family Discount (100% discount orders)
   const fnfDiscount = orders
     .filter((o) => o.discount === 100)
-    .reduce((acc, order) => acc + (order.subtotal || 0), 0);
+    .reduce((acc, order) => {
+      let calcSubtotal = 0;
+      order.items.forEach(item => {
+        const menuItem = menu.find(m => m.id === item.menuItemId);
+        if (menuItem) calcSubtotal += menuItem.price * item.quantity;
+      });
+      return acc + calcSubtotal;
+    }, 0);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +52,29 @@ export default function Finance() {
     setAmount("");
     setCategory("Ingredients");
     setShowAddForm(false);
+  };
+  
+  const handleEditExpense = (expense: any) => {
+    setEditingExpenseId(expense.id);
+    setEditingDescription(expense.description);
+    setEditingAmount(expense.amount.toString());
+    setEditingCategory(expense.category);
+  };
+
+  const handleSaveEdit = async () => {
+    if (!editingExpenseId || !editingDescription || !editingAmount) return;
+    await updateExpense(editingExpenseId, {
+      description: editingDescription,
+      amount: parseFloat(editingAmount),
+      category: editingCategory,
+    });
+    setEditingExpenseId(null);
+  };
+
+  const handleDeleteExpense = async (id: string) => {
+    if (window.confirm("Are you sure you want to delete this expense?")) {
+      await deleteExpense(id);
+    }
   };
   
 
@@ -191,6 +228,7 @@ export default function Finance() {
                   <th className="px-6 py-4 font-medium text-gray-500 dark:text-gray-400">Description</th>
                   <th className="px-6 py-4 font-medium text-gray-500 dark:text-gray-400">Category</th>
                   <th className="px-6 py-4 font-medium text-gray-500 dark:text-gray-400">Amount</th>
+                  <th className="px-6 py-4 font-medium text-gray-500 dark:text-gray-400 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
@@ -207,15 +245,68 @@ export default function Finance() {
                         {new Date(expense.date).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 text-gray-800 dark:text-white/90">
-                        {expense.description}
+                        {editingExpenseId === expense.id ? (
+                          <input
+                            type="text"
+                            value={editingDescription}
+                            onChange={(e) => setEditingDescription(e.target.value)}
+                            className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-hidden dark:bg-gray-800 dark:border-gray-700"
+                          />
+                        ) : (
+                          expense.description
+                        )}
                       </td>
                       <td className="px-6 py-4">
-                        <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:bg-white/[0.05] dark:text-gray-300">
-                          {expense.category}
-                        </span>
+                        {editingExpenseId === expense.id ? (
+                          <select
+                            value={editingCategory}
+                            onChange={(e) => setEditingCategory(e.target.value)}
+                            className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-hidden dark:bg-gray-800 dark:border-gray-700"
+                          >
+                            <option value="Ingredients">Ingredients</option>
+                            <option value="Utilities">Utilities</option>
+                            <option value="Salaries">Salaries</option>
+                            <option value="Maintenance">Maintenance</option>
+                            <option value="Other">Other</option>
+                          </select>
+                        ) : (
+                          <span className="inline-flex items-center rounded-full bg-gray-100 px-2.5 py-0.5 text-xs font-medium text-gray-800 dark:bg-white/[0.05] dark:text-gray-300">
+                            {expense.category}
+                          </span>
+                        )}
                       </td>
                       <td className="px-6 py-4 font-medium text-gray-800 dark:text-white/90">
-                        ₹{expense.amount.toFixed(2)}
+                        {editingExpenseId === expense.id ? (
+                          <input
+                            type="number"
+                            value={editingAmount}
+                            onChange={(e) => setEditingAmount(e.target.value)}
+                            className="w-24 rounded border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-hidden dark:bg-gray-800 dark:border-gray-700"
+                          />
+                        ) : (
+                          `₹${expense.amount.toFixed(2)}`
+                        )}
+                      </td>
+                      <td className="px-6 py-4 text-right">
+                        {editingExpenseId === expense.id ? (
+                          <div className="flex justify-end gap-2">
+                            <button onClick={handleSaveEdit} className="text-green-500 hover:text-green-700">
+                              <Check size={18} />
+                            </button>
+                            <button onClick={() => setEditingExpenseId(null)} className="text-gray-500 hover:text-gray-700">
+                              <X size={18} />
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex justify-end gap-3">
+                            <button onClick={() => handleEditExpense(expense)} className="text-blue-500 hover:text-blue-700">
+                              <Edit size={18} />
+                            </button>
+                            <button onClick={() => handleDeleteExpense(expense.id)} className="text-red-500 hover:text-red-700">
+                              <Trash2 size={18} />
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))

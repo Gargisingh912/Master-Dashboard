@@ -62,9 +62,13 @@ interface KitchenContextType {
   updateInventoryQuantity: (id: string, quantity: number) => Promise<void>;
   addMenuItem: (item: Omit<MenuItem, "id" | "isAvailable">) => Promise<void>;
   addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => Promise<void>;
+  updateOrder: (id: string, updates: { customer_name?: string; total?: number; discount?: number }) => Promise<void>;
   addExpense: (expense: Omit<Expense, "id" | "date">) => Promise<void>;
+  updateExpense: (id: string, updates: Omit<Expense, "id" | "date">) => Promise<void>;
+  deleteExpense: (id: string) => Promise<void>;
   monthlyGoal: number;
   updateMenuItem: (id: string, updates: { name: string; price: number; ingredients: MenuIngredient[] }) => Promise<void>;
+  deleteMenuItem: (id: string) => Promise<void>;
   setMenuItemAvailability: (id: string, isAvailable: boolean) => Promise<void>;
   setMonthlyGoal: (goal: number) => void;
   updateOrderStatus: (id: string, status: string) => Promise<void>;
@@ -372,6 +376,21 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     );
   };
 
+  const deleteMenuItem = async (id: string) => {
+    const { error: deleteError } = await supabase
+      .from('menu_items')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      console.error(deleteError);
+      setError(deleteError.message);
+      return;
+    }
+
+    setMenu(prev => prev.filter(m => m.id !== id));
+  };
+
   const setMenuItemAvailability = async (id: string, isAvailable: boolean) => {
     const { error } = await supabase
       .from('menu_items')
@@ -411,28 +430,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const total = subtotal - (subtotal * discount) / 100;
 
-    // Batched into a single Postgres function (deduct_inventory_for_order)
-    // that wraps every deduction in one transaction. Previously this
-    // looped calling updateInventoryQuantity per ingredient — N separate
-    // round trips, each reading from the same stale local `inventory`
-    // snapshot, and if the order insert below failed partway through,
-    // stock could be deducted with no order to show for it.
-    if (Object.keys(inventoryDeductions).length > 0) {
-      const deductions = Object.entries(inventoryDeductions).map(([inventory_id, qty]) => ({
-        inventory_id,
-        qty,
-      }));
 
-      const { error: deductError } = await supabase.rpc('deduct_inventory_for_order', {
-        deductions,
-      });
-
-      if (deductError) {
-        console.error(deductError);
-        setError(deductError.message);
-        return;
-      }
-    }
 
     const { data: orderData, error: orderError } = await supabase.from('orders').insert({
       organization_id: orgId,
@@ -477,7 +475,51 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     ]);
   };
 
+  const updateOrder = async (id: string, updates: { customer_name?: string; total?: number; discount?: number }) => {
+    const { error } = await supabase.from('orders').update(updates).eq('id', id);
+    if (!error) {
+      setOrders(prev => prev.map(o => o.id === id ? { 
+        ...o, 
+        customer: { ...o.customer, name: updates.customer_name || o.customer.name },
+        total: updates.total ?? o.total,
+        discount: updates.discount ?? o.discount
+      } : o));
+    } else {
+      console.error(error);
+      setError(error.message);
+    }
+  };
+
   const updateOrderStatus = async (id: string, status: string) => {
+    const order = orders.find(o => o.id === id);
+    if (!order) return;
+
+    if (order.status === 'Preparing' && status === 'Delivered') {
+      const inventoryDeductions: Record<string, number> = {};
+      order.items.forEach((orderItem) => {
+        const menuItem = menu.find((m) => m.id === orderItem.menuItemId);
+        if (menuItem) {
+          menuItem.ingredients.forEach((ing) => {
+            const deductionQty = ing.quantity * orderItem.quantity;
+            inventoryDeductions[ing.inventoryId] = (inventoryDeductions[ing.inventoryId] || 0) + deductionQty;
+          });
+        }
+      });
+      if (Object.keys(inventoryDeductions).length > 0) {
+        const deductions = Object.entries(inventoryDeductions).map(([inventory_id, qty]) => ({
+          inventory_id,
+          qty,
+        }));
+        const { error: deductError } = await supabase.rpc('deduct_inventory_for_order', {
+          deductions,
+        });
+        if (deductError) {
+          console.error(deductError);
+          setError(deductError.message);
+        }
+      }
+    }
+
     const { error } = await supabase.from('orders').update({ status }).eq('id', id);
     if (!error) {
       setOrders((prev) =>
@@ -521,6 +563,38 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     ]);
   };
 
+  const updateExpense = async (id: string, updates: Omit<Expense, "id" | "date">) => {
+    const { error } = await supabase
+      .from('expenses')
+      .update(updates)
+      .eq('id', id);
+
+    if (error) {
+      console.error(error);
+      setError(error.message);
+      return;
+    }
+
+    setExpenses(prev =>
+      prev.map(e => (e.id === id ? { ...e, ...updates } : e))
+    );
+  };
+
+  const deleteExpense = async (id: string) => {
+    const { error } = await supabase
+      .from('expenses')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error(error);
+      setError(error.message);
+      return;
+    }
+
+    setExpenses(prev => prev.filter(e => e.id !== id));
+  };
+
   return (
     <KitchenContext.Provider
       value={{
@@ -531,12 +605,16 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         addInventoryItem,
         updateInventoryQuantity,
         addMenuItem,
+        updateMenuItem,
+        deleteMenuItem,
         addOrder,
+        updateOrder,
         addExpense,
+        updateExpense,
+        deleteExpense,
         monthlyGoal,
         setMonthlyGoal,
         updateOrderStatus,
-        updateMenuItem,
         setMenuItemAvailability,
         loading,
         error,

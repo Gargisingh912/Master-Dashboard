@@ -179,6 +179,7 @@ const handleUpdateStockConfirm = (id: string) => {
                   <option value="bottles">bottles</option>
                   <option value="L">L</option>
                   <option value="ml">ml</option>
+                  <option value="pieces">pieces</option>
                 </select>
               </div>
 

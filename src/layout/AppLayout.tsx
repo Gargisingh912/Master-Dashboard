@@ -7,7 +7,7 @@ import TrialBanner from "../layout/TrialBanner";
 import { useAuth } from "../hooks/useAuth";
 
 const LayoutContent: React.FC = () => {
-  const { isExpanded, isHovered, isMobileOpen } = useSidebar();
+  const { isExpanded, isHovered, isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
   const { plan, trialEnds } = useAuth();
 
   console.log("TRIAL DEBUG:", { plan, trialEnds }); // temporary — remove once confirmed working
@@ -23,7 +23,7 @@ const LayoutContent: React.FC = () => {
           isExpanded || isHovered ? "lg:ml-[290px]" : "lg:ml-[90px]"
         } ${isMobileOpen ? "ml-0" : ""}`}
       >
-        <AppHeader />
+        <AppHeader onClick={toggleSidebar} onToggle={toggleMobileSidebar} />
         <TrialBanner plan={plan} trialEnds={trialEnds} />
         <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
           <Outlet />

@@ -122,7 +122,7 @@ const AppHeader: React.FC = () => {
             )}
           </button>
 
-          <Link to="/overview" className="lg:hidden">
+          <Link to="/dashboard" className="lg:hidden">
             <span className="text-lg font-semibold text-gray-800 dark:text-white/90">
               {kitchenName}
             </span>
