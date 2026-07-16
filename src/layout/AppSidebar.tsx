@@ -13,6 +13,7 @@ import {
   LockIcon,
   TableIcon,
   UserCircleIcon,
+
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 import { supabase } from "../config/supabase";
@@ -39,6 +40,11 @@ const navItems: NavItem[] = [
     icon: <ListIcon />,
     name: "Menu",
     path: "/menu",
+  },
+   {
+    icon: <ListIcon />, // ADD THIS ENTRY
+    name: "QR Code",
+    path: "/qr-code",
   },
   {
     name: "Inventory",

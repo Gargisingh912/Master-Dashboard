@@ -5,7 +5,7 @@ import { supabase } from "../config/supabase";
 export interface Organization {
   id: string;
   name: string;
-  niche: string;
+  type: string;
   plan: "trial" | "standard" | "premium" | "enterprise";
   trial_ends: string | null;
   [key: string]: any;
@@ -126,7 +126,7 @@ export function useAuth() {
     org,
     role: profile?.role || "viewer",
     plan: org?.effectivePlan || "trial",
-    niche: org?.niche || "kitchen",
+    type: org?.type || "kitchen",
     trialEnds: org?.trial_ends || null,
     loading,
     error,
