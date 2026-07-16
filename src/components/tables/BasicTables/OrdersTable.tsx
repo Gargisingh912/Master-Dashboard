@@ -134,13 +134,13 @@ export default function OrdersTable() {
 
   {/* Table Body */}
   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-    {orders.map((order, index) => (
+    {orders.filter(o => o.status !== "Declined" && o.status !== "Missed" && o.status !== "Cancelled").map((order) => (
       <TableRow key={order.id}>
         {/* Order ID (display number, UUID retained internally) */}
         <TableCell className="px-5 py-4 sm:px-6 text-start">
           <div className="flex items-center gap-3">
             <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
-              #{orders.length - index}
+              #{orders.length - orders.findIndex(o => o.id === order.id)}
             </span>
           </div>
         </TableCell>
