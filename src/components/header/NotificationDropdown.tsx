@@ -1,8 +1,36 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { useOrderNotifications } from "../../hooks/useOrderNotifications";
 import { formatCurrency, formatTime } from "../../utils/helpers";
+
+const CountdownTimer = ({ createdAt, onExpire }: { createdAt: string; onExpire?: () => void }) => {
+  const [timeLeft, setTimeLeft] = useState(60);
+
+  useEffect(() => {
+    const startTime = new Date(createdAt).getTime();
+    
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = Math.floor((now - startTime) / 1000);
+      const remaining = Math.max(0, 60 - elapsed);
+      setTimeLeft(remaining);
+      
+      if (remaining === 0 && onExpire) {
+        onExpire();
+        clearInterval(interval);
+      }
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [createdAt, onExpire]);
+
+  return (
+    <span className={`text-xs font-bold ${timeLeft <= 10 ? 'text-red-500 animate-pulse' : 'text-orange-500'}`}>
+      {timeLeft}s
+    </span>
+  );
+};
 
 interface NotificationDropdownProps {
   organizationId: string | null;
@@ -10,7 +38,7 @@ interface NotificationDropdownProps {
 
 export default function NotificationDropdown({ organizationId }: NotificationDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const { pendingOrders, acceptOrder } = useOrderNotifications(organizationId);
+  const { pendingOrders, missedOrders, acceptOrder, declineOrder } = useOrderNotifications(organizationId);
 
   function toggleDropdown() {
     setIsOpen((prev) => !prev);
@@ -83,8 +111,8 @@ export default function NotificationDropdown({ organizationId }: NotificationDro
           </button>
         </div>
 
-        <ul className="flex flex-col h-auto gap-2 overflow-y-auto custom-scrollbar">
-          {pendingOrders.length === 0 && (
+        <ul className="flex flex-col h-auto gap-2 overflow-y-auto custom-scrollbar pb-4">
+          {pendingOrders.length === 0 && missedOrders.length === 0 && (
             <li className="py-8 text-sm text-center text-gray-400">
               No new orders right now.
             </li>
@@ -94,42 +122,105 @@ export default function NotificationDropdown({ organizationId }: NotificationDro
             <li key={order.id}>
               <DropdownItem
                 onItemClick={() => {}}
-                className="flex flex-col gap-2 rounded-lg border border-gray-100 p-3 dark:border-gray-800 bg-orange-50/50 dark:bg-white/5"
+                className="flex flex-col gap-2 rounded-lg border border-orange-200 p-3 dark:border-orange-900/50 bg-orange-50/80 dark:bg-orange-500/10 shadow-theme-xs"
               >
                 <div className="flex items-center justify-between w-full">
                   <span className="font-semibold text-gray-800 dark:text-white/90">
                     Order #{order.order_number}
                   </span>
-                  <span className="text-xs text-gray-500 dark:text-gray-400">
-                    {formatTime(order.created_at)}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <CountdownTimer createdAt={order.created_at} />
+                    <span className="text-xs text-gray-500 dark:text-gray-400">
+                      {formatTime(order.created_at)}
+                    </span>
+                  </div>
                 </div>
 
-                <span className="text-xs text-gray-500 dark:text-gray-400">
-                  {order.customer_name}
-                </span>
+                <div className="flex justify-between">
+                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    {order.customer_name}
+                  </span>
+                  {order.customer_contact && (
+                    <span className="text-xs text-gray-500">{order.customer_contact}</span>
+                  )}
+                </div>
 
-                <span className="text-xs text-gray-600 dark:text-gray-300">
+                <span className="text-xs text-gray-600 dark:text-gray-400">
                   {order.items.map((i) => `${i.quantity}x ${i.name}`).join(", ")}
                 </span>
 
-                <div className="flex items-center justify-between w-full mt-1">
-                  <span className="font-semibold text-gray-800 dark:text-white/90">
+                <div className="flex items-center justify-between w-full mt-2">
+                  <span className="font-bold text-gray-800 dark:text-white/90">
                     {formatCurrency(order.total)}
                   </span>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleAccept(order.id);
-                    }}
-                    className="px-3 py-1.5 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700"
-                  >
-                    Accept & Prepare
-                  </button>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        declineOrder(order.id);
+                      }}
+                      className="px-3 py-1.5 text-xs font-medium text-gray-600 bg-white border border-gray-300 rounded-lg hover:bg-gray-50"
+                    >
+                      Decline
+                    </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleAccept(order.id);
+                      }}
+                      className="px-3 py-1.5 text-xs font-semibold text-white bg-green-600 rounded-lg hover:bg-green-700 shadow-theme-xs"
+                    >
+                      Accept
+                    </button>
+                  </div>
                 </div>
               </DropdownItem>
             </li>
           ))}
+
+          {missedOrders.length > 0 && (
+            <>
+              <li className="pt-2 pb-1 border-t border-gray-100 dark:border-gray-800 mt-2">
+                <span className="text-xs font-bold tracking-wider text-gray-400 uppercase">Missed / Declined</span>
+              </li>
+              {missedOrders.map((order) => (
+                <li key={order.id}>
+                  <DropdownItem
+                    onItemClick={() => {}}
+                    className="flex flex-col gap-2 rounded-lg border border-red-100 p-3 dark:border-red-900/30 bg-red-50/50 dark:bg-red-500/5"
+                  >
+                    <div className="flex items-center justify-between w-full">
+                      <span className="font-semibold text-gray-700 dark:text-gray-300">
+                        Order #{order.order_number}
+                      </span>
+                      <span className="text-xs text-red-500 font-medium">Declined</span>
+                    </div>
+
+                    <span className="text-sm font-medium text-gray-600 dark:text-gray-400">
+                      {order.customer_name}
+                    </span>
+
+                    <div className="flex items-center justify-between w-full mt-1">
+                      <span className="font-medium text-gray-600 dark:text-gray-400">
+                        {formatCurrency(order.total)}
+                      </span>
+                      {order.customer_contact ? (
+                        <a
+                          href={`tel:${order.customer_contact}`}
+                          onClick={(e) => e.stopPropagation()}
+                          className="px-3 py-1.5 text-xs font-semibold text-white bg-brand-500 rounded-lg hover:bg-brand-600 shadow-theme-xs"
+                        >
+                          Contact Customer
+                        </a>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">No contact info</span>
+                      )}
+                    </div>
+                  </DropdownItem>
+                </li>
+              ))}
+            </>
+          )}
         </ul>
       </Dropdown>
     </div>

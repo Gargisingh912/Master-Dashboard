@@ -34,22 +34,36 @@ const playAcceptSound = () => {
 export default function OrdersTable() {
   const { orders, menu, updateOrderStatus, updateOrder } = useKitchen();
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
-  const [editingCustomerName, setEditingCustomerName] = useState("");
-  const [editingTotal, setEditingTotal] = useState("");
+  const [editingItems, setEditingItems] = useState<any[]>([]);
   const [invoiceOrder, setInvoiceOrder] = useState<any>(null);
   const invoiceRef = useRef<HTMLDivElement>(null);
 
   const handleEditClick = (order: any) => {
     setEditingOrderId(order.id);
-    setEditingCustomerName(order.customer.name);
-    setEditingTotal(order.total.toString());
+    // clone items
+    setEditingItems(order.items.map((i: any) => ({ ...i })));
+  };
+
+  const handleUpdateEditingItem = (index: number, field: string, value: string | number) => {
+    const newItems = [...editingItems];
+    newItems[index] = { ...newItems[index], [field]: value };
+    setEditingItems(newItems);
+  };
+
+  const handleAddEditingItem = () => {
+    if (menu.length > 0) {
+      setEditingItems([...editingItems, { menuItemId: menu[0].id, quantity: 1 }]);
+    }
+  };
+
+  const handleRemoveEditingItem = (index: number) => {
+    setEditingItems(editingItems.filter((_, i) => i !== index));
   };
 
   const handleSaveEdit = async () => {
     if (!editingOrderId) return;
     await updateOrder(editingOrderId, {
-      customer_name: editingCustomerName,
-      total: parseFloat(editingTotal),
+      items: editingItems,
     });
     setEditingOrderId(null);
   };
@@ -134,38 +148,55 @@ export default function OrdersTable() {
         {/* Customer Name */}
         <TableCell className="px-5 py-4 sm:px-6 text-start">
           <div className="flex items-center gap-3">
-            {editingOrderId === order.id ? (
-              <input
-                type="text"
-                value={editingCustomerName}
-                onChange={(e) => setEditingCustomerName(e.target.value)}
-                className="w-full rounded border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-hidden dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-              />
-            ) : (
-              <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
-                {order.customer.name}
-              </span>
-            )}
+            <span className="block font-medium text-gray-800 text-theme-sm dark:text-white/90">
+              {order.customer.name}
+            </span>
           </div>
         </TableCell>
 
         {/* Items */}
         <TableCell className="px-4 py-3 text-gray-500 text-start text-theme-sm dark:text-gray-400">
-          {order.items.map(item => {
-            const menuItem = menu.find(m => m.id === item.menuItemId);
-            return menuItem ? `${menuItem.name} (x${item.quantity})` : `Unknown Item (x${item.quantity})`;
-          }).join(", ")}
+          {editingOrderId === order.id ? (
+            <div className="flex flex-col gap-2 min-w-[250px]">
+              {editingItems.map((item, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <select
+                    value={item.menuItemId}
+                    onChange={(e) => handleUpdateEditingItem(idx, 'menuItemId', e.target.value)}
+                    className="flex-1 rounded border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 dark:bg-gray-800 dark:border-gray-700"
+                  >
+                    {menu.map((m) => (
+                      <option key={m.id} value={m.id}>{m.name}</option>
+                    ))}
+                  </select>
+                  <input
+                    type="number"
+                    min="1"
+                    value={item.quantity}
+                    onChange={(e) => handleUpdateEditingItem(idx, 'quantity', parseInt(e.target.value) || 1)}
+                    className="w-16 rounded border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 dark:bg-gray-800 dark:border-gray-700"
+                  />
+                  <button onClick={() => handleRemoveEditingItem(idx)} className="text-red-500 hover:text-red-700 p-1">
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+              <button onClick={handleAddEditingItem} className="text-xs text-brand-500 font-semibold self-start hover:text-brand-600">
+                + Add Item
+              </button>
+            </div>
+          ) : (
+            order.items.map(item => {
+              const menuItem = menu.find(m => m.id === item.menuItemId);
+              return menuItem ? `${menuItem.name} (x${item.quantity})` : `Unknown Item (x${item.quantity})`;
+            }).join(", ")
+          )}
         </TableCell>
 
         {/* Total */}
         <TableCell className="px-4 py-3 text-gray-500 text-start text-theme-sm dark:text-gray-400">
           {editingOrderId === order.id ? (
-            <input
-              type="number"
-              value={editingTotal}
-              onChange={(e) => setEditingTotal(e.target.value)}
-              className="w-20 rounded border border-gray-300 px-2 py-1 text-sm focus:border-brand-500 focus:outline-hidden dark:bg-gray-800 dark:border-gray-700 dark:text-white"
-            />
+            <span className="italic text-gray-400">Auto-calculated</span>
           ) : (
             `₹${order.total}`
           )}

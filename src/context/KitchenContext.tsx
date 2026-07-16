@@ -62,7 +62,7 @@ interface KitchenContextType {
   updateInventoryQuantity: (id: string, quantity: number) => Promise<void>;
   addMenuItem: (item: Omit<MenuItem, "id" | "isAvailable">) => Promise<void>;
   addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => Promise<void>;
-  updateOrder: (id: string, updates: { customer_name?: string; total?: number; discount?: number }) => Promise<void>;
+  updateOrder: (id: string, updates: { customer_name?: string; total?: number; discount?: number; items?: OrderItem[] }) => Promise<void>;
   addExpense: (expense: Omit<Expense, "id" | "date">) => Promise<void>;
   updateExpense: (id: string, updates: Omit<Expense, "id" | "date">) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
@@ -242,6 +242,21 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       supabase.removeChannel(channel);
     };
   }, [authLoading, user]);
+  const convertToInventoryUnit = (qty: number, fromUnit: string, toUnit: string): number => {
+    if (!fromUnit || !toUnit || fromUnit === toUnit) return qty;
+    const from = fromUnit.toLowerCase();
+    const to = toUnit.toLowerCase();
+  
+    // Weight
+    if (from === 'g' && to === 'kg') return qty / 1000;
+    if (from === 'kg' && to === 'g') return qty * 1000;
+  
+    // Volume
+    if (from === 'ml' && to === 'l') return qty / 1000;
+    if (from === 'l' && to === 'ml') return qty * 1000;
+  
+    return qty;
+  };
 
   const addInventoryItem = async (item: Omit<InventoryItem, "id">) => {
     if (!orgId) {
@@ -308,11 +323,16 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
 
     if (item.ingredients.length > 0) {
-      const ingredientsToInsert = item.ingredients.map(ing => ({
-        menu_item_id: menuData.id,
-        inventory_item_id: ing.inventoryId,
-        quantity: ing.quantity,
-      }));
+      const ingredientsToInsert = item.ingredients.map(ing => {
+        const inventoryItem = inventory.find(i => i.id === ing.inventoryId);
+        const invUnit = inventoryItem?.unit || '';
+        const fromUnit = ing.unit || invUnit;
+        return {
+          menu_item_id: menuData.id,
+          inventory_item_id: ing.inventoryId,
+          quantity: convertToInventoryUnit(ing.quantity, fromUnit, invUnit),
+        };
+      });
       const { error: ingError } = await supabase.from('menu_ingredients').insert(ingredientsToInsert);
       if (ingError) {
         console.error(ingError);
@@ -351,11 +371,16 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
 
     if (updates.ingredients.length > 0) {
-      const ingredientsToInsert = updates.ingredients.map(ing => ({
-        menu_item_id: id,
-        inventory_item_id: ing.inventoryId,
-        quantity: ing.quantity,
-      }));
+      const ingredientsToInsert = updates.ingredients.map(ing => {
+        const inventoryItem = inventory.find(i => i.id === ing.inventoryId);
+        const invUnit = inventoryItem?.unit || '';
+        const fromUnit = ing.unit || invUnit;
+        return {
+          menu_item_id: id,
+          inventory_item_id: ing.inventoryId,
+          quantity: convertToInventoryUnit(ing.quantity, fromUnit, invUnit),
+        };
+      });
       const { error: insertError } = await supabase
         .from('menu_ingredients')
         .insert(ingredientsToInsert);
@@ -475,13 +500,45 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     ]);
   };
 
-  const updateOrder = async (id: string, updates: { customer_name?: string; total?: number; discount?: number }) => {
-    const { error } = await supabase.from('orders').update(updates).eq('id', id);
+  const updateOrder = async (id: string, updates: { customer_name?: string; total?: number; discount?: number; items?: OrderItem[] }) => {
+    let newTotal = updates.total;
+    let newSubtotal = 0;
+
+    if (updates.items) {
+      // Calculate new total based on items
+      newSubtotal = updates.items.reduce((sum, item) => {
+        const menuItem = menu.find(m => m.id === item.menuItemId);
+        return sum + (menuItem ? menuItem.price * item.quantity : 0);
+      }, 0);
+      
+      const order = orders.find(o => o.id === id);
+      const discount = updates.discount ?? (order?.discount || 0);
+      newTotal = newSubtotal - (newSubtotal * discount) / 100;
+
+      // Update order_items
+      await supabase.from('order_items').delete().eq('order_id', id);
+      if (updates.items.length > 0) {
+        const orderItemsToInsert = updates.items.map(i => ({
+          order_id: id,
+          menu_item_id: i.menuItemId,
+          quantity: i.quantity,
+        }));
+        await supabase.from('order_items').insert(orderItemsToInsert);
+      }
+    }
+
+    const { error } = await supabase.from('orders').update({
+      ...(updates.customer_name && { customer_name: updates.customer_name }),
+      ...(newTotal !== undefined && { total: newTotal }),
+      ...(updates.discount !== undefined && { discount: updates.discount })
+    }).eq('id', id);
+
     if (!error) {
       setOrders(prev => prev.map(o => o.id === id ? { 
         ...o, 
         customer: { ...o.customer, name: updates.customer_name || o.customer.name },
-        total: updates.total ?? o.total,
+        ...(updates.items && { items: updates.items, subtotal: newSubtotal }),
+        total: newTotal ?? o.total,
         discount: updates.discount ?? o.discount
       } : o));
     } else {

@@ -30,8 +30,63 @@ const OrderPage: React.FC = () => {
   const [dob, setDob] = useState<Date | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
 
-  const [submittedOrder, setSubmittedOrder] = useState<{ order_number: number; total: number } | null>(null);
+  const [submittedOrder, setSubmittedOrder] = useState<{ id: string; order_number: number; total: number; created_at: string; status: string } | null>(null);
+  const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [timeLeft, setTimeLeft] = useState(60);
+
+  useEffect(() => {
+    if (!submittedOrder || (submittedOrder.status !== "Placed" && submittedOrder.status !== "Waiting")) return;
+
+    const startTime = new Date(submittedOrder.created_at).getTime();
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const elapsed = Math.floor((now - startTime) / 1000);
+      const remaining = Math.max(0, 60 - elapsed);
+      setTimeLeft(remaining);
+
+      if (remaining === 0) {
+        clearInterval(interval);
+        // Auto-decline if time runs out
+        supabase.from("orders").update({ status: "Declined" }).eq("id", submittedOrder.id).then(() => {
+          setSubmittedOrder(prev => prev ? { ...prev, status: "Declined" } : null);
+        });
+      }
+    }, 1000);
+
+    const channel = supabase
+      .channel(`customer-order-${submittedOrder.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "orders",
+          filter: `id=eq.${submittedOrder.id}`,
+        },
+        (payload) => {
+          const updated = payload.new as { status: string };
+          setSubmittedOrder(prev => prev ? { ...prev, status: updated.status } : null);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      clearInterval(interval);
+      supabase.removeChannel(channel);
+    };
+  }, [submittedOrder]);
+
+  const handleEditOrder = async () => {
+    if (!submittedOrder) return;
+
+    // Set the order to declined temporarily, but keep the ID so we can reuse it
+    await supabase.from("orders").update({ status: "Declined" }).eq("id", submittedOrder.id);
+
+    setEditingOrderId(submittedOrder.id);
+    setSubmittedOrder(null);
+  };
 
   useEffect(() => {
     if (!organizationId) return;
@@ -138,29 +193,58 @@ const OrderPage: React.FC = () => {
 
       if (customerError) throw customerError;
 
-      // Create the order
-      const { data: order, error: orderError } = await supabase
-        .from("orders")
-        .insert([
-          {
-            organization_id: organizationId,
-            customer_name: name.trim(),
-            customer_contact: contact.trim(),
-            customer_email: email.trim() || null,
-            customer_dob: dob ? dob.toISOString().split('T')[0] : null,
-            discount: 0,
+      let orderId = editingOrderId;
+      let orderNumber;
+      let orderCreatedAt;
+
+      if (editingOrderId) {
+        // Update existing order
+        const { data: order, error: orderError } = await supabase
+          .from("orders")
+          .update({
             total,
             status: "Placed",
-          },
-        ])
-        .select()
-        .single();
+            created_at: new Date().toISOString() // reset timer
+          })
+          .eq("id", editingOrderId)
+          .select()
+          .single();
 
-      if (orderError) throw orderError;
+        if (orderError) throw orderError;
+        orderNumber = order.order_number;
+        orderCreatedAt = order.created_at;
+
+        // Delete old items
+        await supabase.from("order_items").delete().eq("order_id", editingOrderId);
+
+      } else {
+        // Create the order
+        const { data: order, error: orderError } = await supabase
+          .from("orders")
+          .insert([
+            {
+              organization_id: organizationId,
+              customer_name: name.trim(),
+              customer_contact: contact.trim(),
+              customer_email: email.trim() || null,
+              customer_dob: dob ? dob.toISOString().split('T')[0] : null,
+              discount: 0,
+              total,
+              status: "Placed",
+            },
+          ])
+          .select()
+          .single();
+
+        if (orderError) throw orderError;
+        orderId = order.id;
+        orderNumber = order.order_number;
+        orderCreatedAt = order.created_at;
+      }
 
       // Create order_items rows
       const itemsPayload = cartLines.map((line) => ({
-        order_id: order.id,
+        order_id: orderId,
         menu_item_id: line.menu_item_id,
         quantity: line.quantity,
       }));
@@ -168,7 +252,14 @@ const OrderPage: React.FC = () => {
       const { error: itemsError } = await supabase.from("order_items").insert(itemsPayload);
       if (itemsError) throw itemsError;
 
-      setSubmittedOrder({ order_number: order.order_number, total });
+      setSubmittedOrder({
+        id: orderId!,
+        order_number: orderNumber,
+        total,
+        created_at: orderCreatedAt,
+        status: "Placed"
+      });
+      setEditingOrderId(null);
     } catch (err: any) {
       console.error("Order submission failed:", err);
       setError(err.message || "Failed to place order. Please try again.");
@@ -182,16 +273,101 @@ const OrderPage: React.FC = () => {
   }
 
   if (submittedOrder) {
+    if (submittedOrder.status === "Declined" || submittedOrder.status === "Missed") {
+      return (
+        <div className="max-w-md mx-auto p-8 text-center bg-white rounded-xl shadow-theme-sm mt-10 border border-red-200">
+          <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </div>
+          <h1 className="text-2xl font-bold text-gray-800 mb-2">Order Declined</h1>
+          <p className="text-gray-600 mb-6">
+            We're sorry, but the kitchen was unable to accept your order at this time. They will contact you soon.
+          </p>
+          <button onClick={() => setSubmittedOrder(null)} className="px-6 py-2 bg-gray-100 text-gray-800 font-semibold rounded-lg hover:bg-gray-200">
+            Return to Menu
+          </button>
+        </div>
+      );
+    }
+
+    if (submittedOrder.status === "Preparing" || submittedOrder.status === "Delivered") {
+      return (
+        <div className="max-w-md mx-auto p-8 bg-white rounded-xl shadow-theme-sm mt-10 border border-gray-200">
+          <div className="text-center mb-6 border-b border-gray-200 pb-4">
+            <h1 className="text-2xl font-bold text-gray-800 tracking-widest uppercase">INVOICE</h1>
+            <p className="text-gray-500 font-semibold mt-1">Order #{submittedOrder.order_number}</p>
+            <p className="text-sm text-gray-400 mt-2">{new Date(submittedOrder.created_at).toLocaleString()}</p>
+          </div>
+
+          <div className="mb-6">
+            <p className="text-xs text-gray-500 uppercase tracking-wider font-bold mb-2">Customer Details:</p>
+            <p className="text-sm text-gray-800 font-medium">{name}</p>
+            <p className="text-sm text-gray-600 mt-1">{contact}</p>
+            {email && <p className="text-sm text-gray-600 mt-1">{email}</p>}
+          </div>
+
+          <div className="mb-6">
+            <table className="w-full text-left text-sm">
+              <thead>
+                <tr className="border-b border-gray-200 text-gray-500">
+                  <th className="py-2 font-semibold">Item</th>
+                  <th className="py-2 font-semibold text-center">Qty</th>
+                  <th className="py-2 font-semibold text-right">Price</th>
+                </tr>
+              </thead>
+              <tbody>
+                {cartLines.map((item, idx) => (
+                  <tr key={idx} className="border-b border-gray-50">
+                    <td className="py-2 text-gray-800">{item.name}</td>
+                    <td className="py-2 text-center text-gray-600">{item.quantity}</td>
+                    <td className="py-2 text-right text-gray-800">₹{(item.price * item.quantity).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex flex-col gap-2 mb-6">
+            <div className="flex justify-between text-sm text-gray-600">
+              <span>Subtotal:</span>
+              <span>₹{submittedOrder.total.toFixed(2)}</span>
+            </div>
+            <div className="flex justify-between text-lg font-bold text-gray-800 pt-2 border-t border-gray-200">
+              <span>Total:</span>
+              <span>₹{submittedOrder.total.toFixed(2)}</span>
+            </div>
+          </div>
+
+          <div className="text-center">
+            <p className="text-brand-600 font-medium mb-1">Thank you for your order!</p>
+            <p className="text-xs text-gray-400 italic">Please screenshot this invoice as your receipt.</p>
+          </div>
+        </div>
+      );
+    }
+
     return (
-      <div className="max-w-md mx-auto p-8 text-center bg-white rounded-xl shadow-theme-sm mt-10 border border-gray-200">
-        <h1 className="text-2xl font-bold text-gray-800 mb-2">Order Placed!</h1>
-        <p className="text-4xl font-black text-brand-500 my-4">#{submittedOrder.order_number}</p>
-        <p className="text-gray-600 mb-4">
-          Total: ₹{submittedOrder.total.toFixed(2)} — pay when you receive your order.
+      <div className="max-w-md mx-auto p-8 text-center bg-white rounded-xl shadow-theme-sm mt-10 border border-brand-200">
+        <h1 className="text-2xl font-bold text-gray-800 mb-2">Waiting for Kitchen...</h1>
+
+        <div className="my-8 relative w-32 h-32 mx-auto">
+          <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+            <circle cx="18" cy="18" r="16" fill="none" className="stroke-current text-gray-100" strokeWidth="2"></circle>
+            <circle cx="18" cy="18" r="16" fill="none" className="stroke-current text-brand-500 transition-all duration-1000 ease-linear" strokeWidth="2" strokeDasharray="100" strokeDashoffset={100 - (timeLeft / 60) * 100} strokeLinecap="round"></circle>
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <span className="text-3xl font-bold text-gray-800">{timeLeft}</span>
+            <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Secs</span>
+          </div>
+        </div>
+
+        <p className="text-gray-600 mb-6 text-sm">
+          Your order <strong className="text-gray-900">#{submittedOrder.order_number}</strong> has been sent to the kitchen. Please wait while they accept it.
         </p>
-        <p className="text-xs text-gray-400">
-          📸 Please take a screenshot of this screen as your receipt.
-        </p>
+
+        <button onClick={handleEditOrder} className="w-full py-3 bg-gray-100 text-gray-800 font-bold rounded-xl hover:bg-gray-200 transition-colors">
+          Edit Order
+        </button>
       </div>
     );
   }
