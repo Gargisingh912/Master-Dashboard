@@ -85,7 +85,24 @@ const LoginPage: React.FC = () => {
  const user = authData.user;
  if (!user) throw new Error("No user returned from login.");
 
- // Step 2: Fetch the user's organization to know where to route them
+ // Step 2: Check the user's role first — superadmins skip org routing entirely
+ const { data: profileData, error: profileError } = await supabase
+ .from("profiles")
+ .select("role")
+ .eq("id", user.id)
+ .single();
+
+ if (profileError && profileError.code !== 'PGRST116') {
+ console.error("Error fetching profile:", profileError);
+ }
+console.log("PROFILE CHECK:", { profileData, profileError, userId: user.id }); // ADD THIS LINE
+
+ if (profileData?.role === "superadmin") {
+ navigate("/superadmin", { replace: true });
+ return;
+ }
+
+ // Step 3: Fetch the user's organization to know where to route them
  const { data: orgData, error: orgError } = await supabase
  .from("organizations")
  .select("type")
@@ -96,7 +113,7 @@ const LoginPage: React.FC = () => {
  console.error("Error fetching organization:", orgError);
  }
 
- // Step 3: Route to the correct dashboard based on org type
+ // Step 4: Route to the correct dashboard based on org type
  const route = dashboardRouteFor(orgData?.type || "");
  navigate(route, { replace: true });
 
