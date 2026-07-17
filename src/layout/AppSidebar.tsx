@@ -10,9 +10,9 @@ import {
   GridIcon,
   HorizontaLDots,
   ListIcon,
-  LockIcon,
   TableIcon,
   UserCircleIcon,
+  DocsIcon,
 
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
@@ -75,8 +75,8 @@ const navItems: NavItem[] = [
   },
   {
     name: "Docs",
-    icon: <LockIcon />,
-    path: "/profile",
+    icon: <DocsIcon />,
+    path: "/docs",
   },
 ];
 
