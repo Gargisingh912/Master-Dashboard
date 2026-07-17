@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../config/supabase";
 
-export interface Organization {
+interface Organization {
   id: string;
   name: string;
   type: string;
