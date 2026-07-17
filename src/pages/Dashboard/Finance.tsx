@@ -4,7 +4,10 @@ import { useKitchen } from "../../context/KitchenContext";
 import FinanceChart from "../../components/charts/bar/FinanceChart";
 import { Edit, Trash2, X, Check } from "lucide-react";
 
+import { useAuth } from "../../hooks/useAuth";
+
 export default function Finance() {
+  const { role } = useAuth();
   const { orders, expenses, addExpense, monthlyGoal, setMonthlyGoal, menu } = useKitchen();
   const [isEditingGoal, setIsEditingGoal] = useState(true);
   const [showAddForm, setShowAddForm] = useState(false);
@@ -77,6 +80,18 @@ export default function Finance() {
     }
   };
   
+
+  if (role === "admin") {
+    return (
+      <>
+        <PageMeta title="Finance | Kitchen Dashboard" description="Track revenue and expenses" />
+        <div className="p-10 text-center text-gray-500">
+          <h2 className="text-xl font-bold mb-2 text-red-500">Access Denied</h2>
+          <p>You do not have permission to view the Finance page.</p>
+        </div>
+      </>
+    );
+  }
 
   return (
     <>

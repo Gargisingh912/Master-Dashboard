@@ -17,6 +17,7 @@ import {
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 import { supabase } from "../config/supabase";
+import { useAuth } from "../hooks/useAuth";
 
 type NavItem = {
   name: string;
@@ -78,6 +79,7 @@ const AppSidebar: React.FC = () => {
   const { isExpanded, isMobileOpen, isHovered, setIsHovered } = useSidebar();
   const location = useLocation();
   const [kitchenName, setKitchenName] = useState<string>("");
+  const { plan, role } = useAuth();
 
   const [openSubmenu, setOpenSubmenu] = useState<{
     type: "main";
@@ -175,9 +177,19 @@ const AppSidebar: React.FC = () => {
     });
   };
 
-  const renderMenuItems = (items: NavItem[], menuType: "main") => (
+  const renderMenuItems = (items: NavItem[], menuType: "main") => {
+    // Filter items based on plan and role
+    const filteredItems = items.filter(nav => {
+      // Standard plan does not get Talk to your Data
+      if (plan === "standard" && nav.name === "Talk to your Data!!") return false;
+      // Admin role cannot see Finance or Customers
+      if (role === "admin" && (nav.name === "Finance" || nav.name === "Customers")) return false;
+      return true;
+    });
+
+    return (
     <ul className="flex flex-col gap-4">
-      {items.map((nav, index) => (
+      {filteredItems.map((nav, index) => (
         <li key={nav.name}>
           {nav.subItems ? (
             <button
@@ -287,7 +299,8 @@ const AppSidebar: React.FC = () => {
         </li>
       ))}
     </ul>
-  );
+    );
+  };
 
   return (
     <aside
@@ -309,9 +322,14 @@ const AppSidebar: React.FC = () => {
       >
         <Link to="/dashboard">
           {isExpanded || isHovered || isMobileOpen ? (
-            <span className="text-xl font-bold text-gray-800 dark:text-white/90">
-              {kitchenName}
-            </span>
+            <div className="flex flex-col">
+              <span className="text-xl font-bold text-gray-800 dark:text-white/90">
+                {kitchenName}
+              </span>
+              <span className="text-xs font-semibold text-brand-500 uppercase tracking-wider mt-0.5">
+                {plan} Plan
+              </span>
+            </div>
           ) : (
             <span className="flex items-center justify-center w-8 h-8 rounded-full bg-brand-500 text-white text-sm font-bold">
               {kitchenName?.charAt(0).toUpperCase()}

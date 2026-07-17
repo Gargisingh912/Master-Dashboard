@@ -19,7 +19,7 @@ export interface Profile {
   id: string;
   full_name?: string;
   email?: string;
-  role?: "viewer" | "owner" | "superadmin";
+  role?: "admin" | "owner" | "superadmin";
   organization_id?: string;
   organizations?: Organization;
   [key: string]: any;
@@ -57,7 +57,7 @@ export function useAuth() {
 
       if (effectivePlan === "trial" && orgData?.trial_ends) {
         const expired = new Date(orgData.trial_ends) < new Date();
-        if (expired) effectivePlan = "standard"; // trial expired → free tier
+        if (expired) effectivePlan = "premium"; // trial expired → free tier
       }
 
       if (orgData) {
@@ -124,7 +124,7 @@ export function useAuth() {
     user,
     profile,
     org,
-    role: profile?.role || "viewer",
+    role: profile?.role || "admin",
     plan: org?.effectivePlan || "trial",
     type: org?.type || "kitchen",
     trialEnds: org?.trial_ends || null,
