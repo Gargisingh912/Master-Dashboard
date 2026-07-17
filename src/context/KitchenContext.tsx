@@ -60,6 +60,7 @@ interface KitchenContextType {
   expenses: Expense[];
   addInventoryItem: (item: Omit<InventoryItem, "id">) => Promise<void>;
   updateInventoryQuantity: (id: string, quantity: number) => Promise<void>;
+  deleteInventoryItem: (id: string) => Promise<void>;
   addMenuItem: (item: Omit<MenuItem, "id" | "isAvailable">) => Promise<void>;
   addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => Promise<void>;
   updateOrder: (id: string, updates: { customer_name?: string; total?: number; discount?: number; items?: OrderItem[] }) => Promise<void>;
@@ -301,6 +302,21 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       console.error(error);
       setError(error.message);
     }
+  };
+
+  const deleteInventoryItem = async (id: string) => {
+    const { error } = await supabase
+      .from('inventory_items')
+      .delete()
+      .eq('id', id);
+
+    if (error) {
+      console.error(error);
+      setError(error.message);
+      return;
+    }
+
+    setInventory(prev => prev.filter(i => i.id !== id));
   };
 
   const addMenuItem = async (item: Omit<MenuItem, "id" | "isAvailable">) => {
@@ -661,6 +677,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         expenses,
         addInventoryItem,
         updateInventoryQuantity,
+        deleteInventoryItem,
         addMenuItem,
         updateMenuItem,
         deleteMenuItem,

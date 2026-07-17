@@ -143,7 +143,7 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
     const updated = [...ingredients];
     if (field === "inventoryId") {
       updated[index].inventoryId = value;
-      updated[index].unit = inventory.find((i) => i.id === value)?.unit || "kg";
+      // We intentionally do NOT reset updated[index].unit here so that if the user already selected "gram", it stays "gram".
     } else if (field === "quantity") {
       updated[index].quantity = parseFloat(value) || 0;
     } else if (field === "unit") {
@@ -198,7 +198,7 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
     const updated = [...editIngredients];
     if (field === "inventoryId") {
       updated[index].inventoryId = value;
-      updated[index].unit = inventory.find((i) => i.id === value)?.unit || "kg";
+      // We intentionally do NOT reset updated[index].unit here so that if the user already selected "gram", it stays "gram".
     } else if (field === "quantity") {
       updated[index].quantity = parseFloat(value) || 0;
     } else if (field === "unit") {
@@ -410,10 +410,11 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
                       <ul className="space-y-1">
                         {item.ingredients.map((ing, idx) => {
                           const invItem = inventory.find((i) => i.id === ing.inventoryId);
+                          const isLowStock = invItem && invItem.quantity < ing.quantity * 5; // LOW_STOCK_MULTIPLIER
                           return (
-                            <li key={idx} className="text-sm text-gray-700 dark:text-gray-300 flex justify-between">
+                            <li key={idx} className={`text-sm flex justify-between ${isLowStock ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-700 dark:text-gray-300'}`}>
                               <span>{invItem?.name || "Unknown"}</span>
-                              <span className="text-gray-500">
+                              <span className={isLowStock ? 'text-red-500 dark:text-red-400' : 'text-gray-500'}>
                                 {ing.quantity} {ing.unit || invItem?.unit || ""}
                               </span>
                             </li>
