@@ -18,7 +18,7 @@ const LandingPage: React.FC = () => {
     const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
     return (
-        <div className="min-h-screen bg-gray-50 m-4">
+        <div className="min-h-screen bg-gray-50 ">
             {/* Navigation */}
             <nav className="border-b border-gray-200 sticky top-0 bg-white/95 backdrop-blur-sm z-40">
                 <div className="container-custom">
@@ -140,7 +140,7 @@ const LandingPage: React.FC = () => {
 
 
                             <a href="#how-it-works">
-                                <Button size="lg"  className="bg-transparent border border-black text-black hover:bg-blue-600 hover:border-blue-600 hover:text-white transition-colors duration-200 group">
+                                <Button size="lg" className="bg-transparent border border-black text-black hover:bg-blue-600 hover:border-blue-600 hover:text-white transition-colors duration-200 group">
                                     See How it Works
                                 </Button>
                             </a>
@@ -233,7 +233,7 @@ const LandingPage: React.FC = () => {
                             Simple, transparent pricing
                         </h2>
                         <p className="text-lg text-gray-500 ">
-                            Start with a 3-day free trial. No credit required.
+                            Start with a 7-day free trial — full Premium features included. No credit card required.
                         </p>
                     </div>
 
@@ -241,10 +241,10 @@ const LandingPage: React.FC = () => {
                         {Object.entries(APP_CONFIG.plans).map(([key, plan]) => (
                             <div
                                 key={key}
-                                className={`rounded-xl border border-gray-200 bg-white p-6 ${key === "starter" ? "ring-2 ring-black relative" : ""
+                                className={`rounded-xl border border-gray-200 bg-white p-6 ${key === "premium" ? "ring-2 ring-black relative" : ""
                                     }`}
                             >
-                                {key === "starter" && (
+                                {key === "premium" && (
                                     <div className="absolute -top-4 left-1/2 -translate-x-1/2 bg-black text-white px-4 py-1 rounded-full text-sm font-medium">
                                         Most Popular
                                     </div>
@@ -281,7 +281,7 @@ const LandingPage: React.FC = () => {
                                 <Link to="/register">
                                     <Button
                                         fullWidth
-                                     className="bg-transparent border border-black text-black hover:bg-blue-600 hover:border-blue-600 hover:text-white transition-colors duration-200 group">
+                                        className="bg-transparent border border-black text-black hover:bg-blue-600 hover:border-blue-600 hover:text-white transition-colors duration-200 group">
                                         {plan.price === 0 ? "Start Free Trial" : "Get Started"}
                                     </Button>
                                 </Link>
@@ -349,7 +349,7 @@ const LandingPage: React.FC = () => {
                         <Link to="/register">
                             <Button
                                 size="lg"
-                                
+
                                 className="bg-transparent border border-black text-black hover:bg-blue-600 hover:border-blue-600 hover:text-white transition-colors duration-200 group"
                             >
                                 Get Started for Free

@@ -15,43 +15,43 @@ export const APP_CONFIG = {
   orderPrefix: "ORD",
 
   // Subscription plans
-  plans: {
-    free_trial: {
-      name: "Free Trial",
-      price: 0,
-      duration: "3 days",
-      features: [
-        "Unlimited",
-        "Basic menu management",
-        "QR ordering",
-        "Email support",
-      ],
-    },
-    starter: {
-      name: "Starter",
-      price: 299,
-      duration: "per month",
-      features: [
-        "Unlimited orders",
-        "Full menu management",
-        "QR ordering",
-        "Reports",
-        "WhatsApp support",
-      ],
-    },
-    pro: {
-      name: "Pro",
-      price: 599,
-      duration: "per month",
-      features: [
-        "Everything in Starter",
-        "Multiple locations",
-        "Advanced analytics",
-        "Custom branding",
-        "Priority support",
-      ],
-    },
+  // Merge this into your existing APP_CONFIG object in src/config/config.ts,
+// replacing whatever `plans` currently contains. Keep the rest of
+// APP_CONFIG (appName, defaultCurrency, organizationTypes, etc.) untouched.
+
+plans: {
+  trial: {
+    name: "Free Trial",
+    price: 0,
+    duration: "7 days free — full Premium access",
+    features: [
+      "QR Code Ordering",
+      "Friends & Family Discounts",
+      "Role-Based Access Control",
+      "RAG Bot — Talk to Your Data",
+    ],
   },
+  standard: {
+    name: "Standard",
+    price: 999,
+    duration: "month",
+    features: [
+      "QR Code Ordering",
+      "Friends & Family Discounts",
+    ],
+  },
+  premium: {
+    name: "Premium",
+    price: 1999,
+    duration: "month",
+    features: [
+      "QR Code Ordering",
+      "Friends & Family Discounts",
+      "Role-Based Access Control",
+      "RAG Bot — Talk to Your Data",
+    ],
+  },
+},
 
   // Organizations types
   organizationTypes: [
