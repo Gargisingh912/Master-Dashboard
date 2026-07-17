@@ -1,6 +1,7 @@
 import React, { useRef } from "react";
 import { QRCodeCanvas } from "qrcode.react";
 import { useAuth } from "../../hooks/useAuth";
+import { uuidToBase62 } from "../../utils/helpers";
 
 const QRCodePage: React.FC = () => {
   const { org } = useAuth();
@@ -10,7 +11,9 @@ const QRCodePage: React.FC = () => {
     return <p style={{ padding: 24, color: "#7B9EC4" }}>Loading organization info...</p>;
   }
 
-  const orderUrl = `${window.location.origin}/order/${org.id}`;
+  const slug = (org.name || "menu").toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)+/g, '');
+  const shortId = uuidToBase62(org.id);
+  const orderUrl = `${window.location.origin}/order/${slug}/${shortId}`;
 
   const handleDownload = () => {
     const canvas = qrRef.current?.querySelector("canvas");

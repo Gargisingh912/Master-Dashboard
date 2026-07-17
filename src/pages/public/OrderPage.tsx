@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { supabase } from "../../config/supabase";
+import { base62ToUuid } from "../../utils/helpers";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 interface MenuItem {
@@ -90,10 +91,12 @@ const OrderPage: React.FC = () => {
 
   useEffect(() => {
     if (!organizationId) return;
+    const actualOrgId = base62ToUuid(organizationId);
+
     supabase
       .from("menu_items")
       .select("id, name, price")
-      .eq("organization_id", organizationId)
+      .eq("organization_id", actualOrgId)
       .eq("is_available", true)
       .then(({ data, error }) => {
         if (error) console.error("Failed to load menu:", error);
@@ -176,12 +179,13 @@ const OrderPage: React.FC = () => {
     setSubmitting(true);
 
     try {
+      const actualOrgId = base62ToUuid(organizationId || "");
       // Upsert customer record
       const { error: customerError } = await supabase
         .from("customers")
         .upsert(
           {
-            organization_id: organizationId,
+            organization_id: actualOrgId,
             contact_number: contact.trim(),
             name: name.trim(),
             email: email.trim() || "no-email@provided.com",
@@ -223,7 +227,7 @@ const OrderPage: React.FC = () => {
           .from("orders")
           .insert([
             {
-              organization_id: organizationId,
+              organization_id: actualOrgId,
               customer_name: name.trim(),
               customer_contact: contact.trim(),
               customer_email: email.trim() || null,

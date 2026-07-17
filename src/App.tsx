@@ -22,6 +22,7 @@ import Home from "./pages/Dashboard/Home";
 import Menu from "./pages/Dashboard/Menu";
 import Inventory from "./pages/Dashboard/Inventory";
 import Finance from "./pages/Dashboard/Finance";
+import TeamManagement from "./pages/Dashboard/TeamManagement";
 import LandingPage from "./pages/public/LandingPage";
 import RegisterPage from "./pages/public/RegisterPage";
 import LoginPage from "./pages/public/LoginPage";
@@ -43,6 +44,7 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
           <Route path="/free-trial" element={<FreeTrialPage />} />
           <Route path="/order/:organizationId" element={<OrderPage />} />
+          <Route path="/order/:slug/:organizationId" element={<OrderPage />} />
 
           {/* Superadmin — standalone, guarded */}
           <Route element={<RequireSuperAdmin />}>
@@ -57,6 +59,7 @@ export default function App() {
             <Route path="/qr-code" element={<QRCodePage />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/finance" element={<Finance />} />
+            <Route path="/team" element={<TeamManagement />} />
 
             {/* Others Page */}
             <Route path="/profile" element={<UserProfiles />} />

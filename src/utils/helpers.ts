@@ -197,3 +197,39 @@ export const playSound = (
 ) => {
   playNotificationSound();
 };
+
+/**
+ * Compress a UUID to a shorter 22-character Base62 string
+ */
+export const uuidToBase62 = (uuid: string): string => {
+  if (!uuid) return "";
+  const hex = uuid.replace(/-/g, "");
+  let num = BigInt("0x" + hex);
+  const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+  let base62 = "";
+  while (num > 0n) {
+    base62 = chars[Number(num % 62n)] + base62;
+    num = num / 62n;
+  }
+  return base62.padStart(22, "0");
+};
+
+/**
+ * Decompress a 22-character Base62 string back to a UUID
+ */
+export const base62ToUuid = (base62: string): string => {
+  if (!base62 || base62.length !== 22) return base62;
+  try {
+    const chars = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+    let num = 0n;
+    for (let i = 0; i < base62.length; i++) {
+      const charIndex = chars.indexOf(base62[i]);
+      if (charIndex === -1) return base62;
+      num = num * 62n + BigInt(charIndex);
+    }
+    const hex = num.toString(16).padStart(32, "0");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+  } catch {
+    return base62;
+  }
+};
