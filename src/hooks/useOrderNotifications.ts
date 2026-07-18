@@ -4,7 +4,7 @@ import { playNotificationSound } from "../utils/helpers";
 
 export interface PendingOrder {
   id: string;
-  order_number: number;
+  order_ID: number;
   customer_name: string;
   customer_contact?: string;
   total: number;
@@ -21,7 +21,7 @@ export function useOrderNotifications(organizationId: string | null) {
     async (orderId: string): Promise<PendingOrder | null> => {
       const { data: order, error: orderError } = await supabase
         .from("orders")
-        .select("id, order_number, customer_name, customer_contact, total, created_at, status")
+        .select("id, order_id, customer_name, customer_contact, total, created_at, status")
         .eq("id", orderId)
         .single();
 
@@ -38,7 +38,7 @@ export function useOrderNotifications(organizationId: string | null) {
 
       return {
         id: order.id,
-        order_number: order.order_number,
+        order_ID: order.order_id,
         customer_name: order.customer_name,
         customer_contact: order.customer_contact,
         total: order.total,
@@ -74,7 +74,7 @@ export function useOrderNotifications(organizationId: string | null) {
       (data || []).map((o) => fetchOrderDetails(o.id))
     );
     const validDetails = details.filter((d): d is PendingOrder => d !== null);
-    
+
     setPendingOrders(validDetails.filter(d => d.status === "Placed"));
     setMissedOrders(validDetails.filter(d => d.status === "Declined" || d.status === "Missed"));
   }, [organizationId, fetchOrderDetails]);
@@ -116,7 +116,7 @@ export function useOrderNotifications(organizationId: string | null) {
         },
         async (payload) => {
           const updated = payload.new as { id: string; status: string };
-          
+
           if (updated.status === "Placed") {
             const placedOrder = await fetchOrderDetails(updated.id);
             if (placedOrder) {
@@ -133,7 +133,7 @@ export function useOrderNotifications(organizationId: string | null) {
           } else {
             setPendingOrders((prev) => prev.filter((o) => o.id !== updated.id));
           }
-          
+
           if (updated.status === "Declined" || updated.status === "Missed") {
             const missedOrder = await fetchOrderDetails(updated.id);
             if (missedOrder) {

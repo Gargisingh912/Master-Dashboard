@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { supabase } from "../../config/supabase";
-import { base62ToUuid } from "../../utils/helpers";
+import { base62ToUuid, generateOrderNumber } from "../../utils/helpers";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 interface MenuItem {
@@ -31,7 +31,9 @@ const OrderPage: React.FC = () => {
   const [dob, setDob] = useState<Date | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
 
-  const [submittedOrder, setSubmittedOrder] = useState<{ id: string; order_number: number; total: number; created_at: string; status: string } | null>(null);
+  // order_id is the human-readable ID (e.g. "ORD146610567") — this is what
+  // should show on the customer page AND the dashboard's Order ID column.
+  const [submittedOrder, setSubmittedOrder] = useState<{ id: string; order_id: string; total: number; created_at: string; status: string } | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
@@ -106,11 +108,12 @@ const OrderPage: React.FC = () => {
   }, [organizationId]);
 
   const handleContactLookup = async () => {
-    if (!contact.trim()) return;
+    if (!contact.trim() || !organizationId) return;
+    const actualOrgId = base62ToUuid(organizationId);
     const { data, error } = await supabase
       .from("customers")
       .select("name, email, address, dob")
-      .eq("organization_id", organizationId)
+      .eq("organization_id", actualOrgId)
       .eq("contact_number", contact.trim())
       .maybeSingle();
 
@@ -198,11 +201,11 @@ const OrderPage: React.FC = () => {
       if (customerError) throw customerError;
 
       let orderId = editingOrderId;
-      let orderNumber;
-      let orderCreatedAt;
+      let orderCode: string;
+      let orderCreatedAt: string;
 
       if (editingOrderId) {
-        // Update existing order
+        // Update existing order — keep its original order_id, don't regenerate
         const { data: order, error: orderError } = await supabase
           .from("orders")
           .update({
@@ -211,11 +214,11 @@ const OrderPage: React.FC = () => {
             created_at: new Date().toISOString() // reset timer
           })
           .eq("id", editingOrderId)
-          .select()
+          .select("id, order_id, created_at")
           .single();
 
         if (orderError) throw orderError;
-        orderNumber = order.order_number;
+        orderCode = order.order_id;
         orderCreatedAt = order.created_at;
 
         // Delete old items
@@ -228,6 +231,7 @@ const OrderPage: React.FC = () => {
           .insert([
             {
               organization_id: actualOrgId,
+              order_id: generateOrderNumber(),
               customer_name: name.trim(),
               customer_contact: contact.trim(),
               customer_email: email.trim() || null,
@@ -237,12 +241,12 @@ const OrderPage: React.FC = () => {
               status: "Placed",
             },
           ])
-          .select()
+          .select("id, order_id, created_at")
           .single();
 
         if (orderError) throw orderError;
         orderId = order.id;
-        orderNumber = order.order_number;
+        orderCode = order.order_id;
         orderCreatedAt = order.created_at;
       }
 
@@ -258,7 +262,7 @@ const OrderPage: React.FC = () => {
 
       setSubmittedOrder({
         id: orderId!,
-        order_number: orderNumber,
+        order_id: orderCode,
         total,
         created_at: orderCreatedAt,
         status: "Placed"
@@ -299,7 +303,7 @@ const OrderPage: React.FC = () => {
         <div className="max-w-md mx-auto p-8 bg-white rounded-xl shadow-theme-sm mt-10 border border-gray-200">
           <div className="text-center mb-6 border-b border-gray-200 pb-4">
             <h1 className="text-2xl font-bold text-gray-800 tracking-widest uppercase">INVOICE</h1>
-            <p className="text-gray-500 font-semibold mt-1">Order #{submittedOrder.order_number}</p>
+            <p className="text-gray-500 font-semibold mt-1">Order #{submittedOrder.order_id}</p>
             <p className="text-sm text-gray-400 mt-2">{new Date(submittedOrder.created_at).toLocaleString()}</p>
           </div>
 
@@ -366,7 +370,7 @@ const OrderPage: React.FC = () => {
         </div>
 
         <p className="text-gray-600 mb-6 text-sm">
-          Your order <strong className="text-gray-900">#{submittedOrder.order_number}</strong> has been sent to the kitchen. Please wait while they accept it.
+          Your order <strong className="text-gray-900">#{submittedOrder.order_id}</strong> has been sent to the kitchen. Please wait while they accept it.
         </p>
 
         <button onClick={handleEditOrder} className="w-full py-3 bg-gray-100 text-gray-800 font-bold rounded-xl hover:bg-gray-200 transition-colors">
