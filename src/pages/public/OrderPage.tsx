@@ -31,8 +31,9 @@ const OrderPage: React.FC = () => {
   const [dob, setDob] = useState<Date | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
 
-  // order_id is the human-readable ID (e.g. "ORD146610567") — this is what
-  // should show on the customer page AND the dashboard's Order ID column.
+  // "id" = the real uuid primary key. "order_id" = the human-readable text
+  // code from generateOrderNumber() (e.g. "ORD140361460") — this is what
+  // shows on the customer page and dashboard, matching your actual table.
   const [submittedOrder, setSubmittedOrder] = useState<{ id: string; order_id: string; total: number; created_at: string; status: string } | null>(null);
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -200,12 +201,12 @@ const OrderPage: React.FC = () => {
 
       if (customerError) throw customerError;
 
-      let orderId = editingOrderId;
-      let orderCode: string;
+      let orderPk = editingOrderId; // uuid primary key
+      let orderCode: string;        // human-readable order_id text column
       let orderCreatedAt: string;
 
       if (editingOrderId) {
-        // Update existing order — keep its original order_id, don't regenerate
+        // Update existing order — keep its original order_id code, don't regenerate
         const { data: order, error: orderError } = await supabase
           .from("orders")
           .update({
@@ -245,14 +246,14 @@ const OrderPage: React.FC = () => {
           .single();
 
         if (orderError) throw orderError;
-        orderId = order.id;
+        orderPk = order.id;
         orderCode = order.order_id;
         orderCreatedAt = order.created_at;
       }
 
       // Create order_items rows
       const itemsPayload = cartLines.map((line) => ({
-        order_id: orderId,
+        order_id: orderPk,
         menu_item_id: line.menu_item_id,
         quantity: line.quantity,
       }));
@@ -261,7 +262,7 @@ const OrderPage: React.FC = () => {
       if (itemsError) throw itemsError;
 
       setSubmittedOrder({
-        id: orderId!,
+        id: orderPk!,
         order_id: orderCode,
         total,
         created_at: orderCreatedAt,
@@ -270,7 +271,11 @@ const OrderPage: React.FC = () => {
       setEditingOrderId(null);
     } catch (err: any) {
       console.error("Order submission failed:", err);
-      setError(err.message || "Failed to place order. Please try again.");
+      // TEMP DEBUG — remove after diagnosing the RLS/org mismatch
+      const debugOrgId = base62ToUuid(organizationId || "");
+      setError(
+        `${err.message || "Failed to place order."} [debug: param=${organizationId} decoded=${debugOrgId}]`
+      );
     } finally {
       setSubmitting(false);
     }
