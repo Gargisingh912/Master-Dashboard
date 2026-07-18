@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { useParams } from "react-router";
-import { supabase } from "../../config/supabase";
+import { supabasePublic } from "../../config/supabasePublic";
 import { base62ToUuid, generateOrderNumber } from "../../utils/helpers";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
@@ -23,6 +23,7 @@ const OrderPage: React.FC = () => {
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [authReady, setAuthReady] = useState(false);
 
   const [contact, setContact] = useState("");
   const [name, setName] = useState("");
@@ -39,6 +40,24 @@ const OrderPage: React.FC = () => {
   const [error, setError] = useState("");
   const [timeLeft, setTimeLeft] = useState(60);
 
+  // Ensure every visitor has an anonymous Supabase session before they can
+  // place an order. If a session already exists (returning visitor on the
+  // same device), this is a no-op — Supabase reuses the stored one.
+  useEffect(() => {
+    const ensureAnonSession = async () => {
+      const { data: sessionData } = await supabasePublic.auth.getSession();
+      if (!sessionData.session) {
+        const { error: signInError } = await supabasePublic.auth.signInAnonymously();
+        if (signInError) {
+          console.error("Anonymous sign-in failed:", signInError);
+          setError("Could not start your ordering session. Please refresh and try again.");
+        }
+      }
+      setAuthReady(true);
+    };
+    ensureAnonSession();
+  }, []);
+
   useEffect(() => {
     if (!submittedOrder || (submittedOrder.status !== "Placed" && submittedOrder.status !== "Waiting")) return;
 
@@ -53,13 +72,13 @@ const OrderPage: React.FC = () => {
       if (remaining === 0) {
         clearInterval(interval);
         // Auto-decline if time runs out
-        supabase.from("orders").update({ status: "Declined" }).eq("id", submittedOrder.id).then(() => {
+        supabasePublic.from("orders").update({ status: "Declined" }).eq("id", submittedOrder.id).then(() => {
           setSubmittedOrder(prev => prev ? { ...prev, status: "Declined" } : null);
         });
       }
     }, 1000);
 
-    const channel = supabase
+    const channel = supabasePublic
       .channel(`customer-order-${submittedOrder.id}`)
       .on(
         "postgres_changes",
@@ -78,7 +97,7 @@ const OrderPage: React.FC = () => {
 
     return () => {
       clearInterval(interval);
-      supabase.removeChannel(channel);
+      supabasePublic.removeChannel(channel);
     };
   }, [submittedOrder]);
 
@@ -86,7 +105,7 @@ const OrderPage: React.FC = () => {
     if (!submittedOrder) return;
 
     // Set the order to declined temporarily, but keep the ID so we can reuse it
-    await supabase.from("orders").update({ status: "Declined" }).eq("id", submittedOrder.id);
+    await supabasePublic.from("orders").update({ status: "Declined" }).eq("id", submittedOrder.id);
 
     setEditingOrderId(submittedOrder.id);
     setSubmittedOrder(null);
@@ -96,7 +115,7 @@ const OrderPage: React.FC = () => {
     if (!organizationId) return;
     const actualOrgId = base62ToUuid(organizationId);
 
-    supabase
+    supabasePublic
       .from("menu_items")
       .select("id, name, price")
       .eq("organization_id", actualOrgId)
@@ -111,7 +130,7 @@ const OrderPage: React.FC = () => {
   const handleContactLookup = async () => {
     if (!contact.trim() || !organizationId) return;
     const actualOrgId = base62ToUuid(organizationId);
-    const { data, error } = await supabase
+    const { data, error } = await supabasePublic
       .from("customers")
       .select("name, email, address, dob")
       .eq("organization_id", actualOrgId)
@@ -167,6 +186,10 @@ const OrderPage: React.FC = () => {
   const handleSubmitOrder = async () => {
     setError("");
 
+    if (!authReady) {
+      setError("Still setting up your session, please wait a second and try again.");
+      return;
+    }
     if (!name.trim() || !contact.trim()) {
       setError("Please enter your name and contact number.");
       return;
@@ -182,10 +205,16 @@ const OrderPage: React.FC = () => {
 
     setSubmitting(true);
 
+    // // TEMP DEBUG — remove after confirming session claims
+    // const { data: debugSession } = await supabasePublic.auth.getSession();
+    // console.log("DEBUG session user:", debugSession.session?.user);
+    // console.log("DEBUG is_anonymous claim:", debugSession.session?.user?.is_anonymous);
+    // console.log("DEBUG access token present:", !!debugSession.session?.access_token);
+
     try {
       const actualOrgId = base62ToUuid(organizationId || "");
       // Upsert customer record
-      const { error: customerError } = await supabase
+      const { error: customerError } = await supabasePublic
         .from("customers")
         .upsert(
           {
@@ -207,7 +236,7 @@ const OrderPage: React.FC = () => {
 
       if (editingOrderId) {
         // Update existing order — keep its original order_id code, don't regenerate
-        const { data: order, error: orderError } = await supabase
+        const { data: order, error: orderError } = await supabasePublic
           .from("orders")
           .update({
             total,
@@ -223,11 +252,11 @@ const OrderPage: React.FC = () => {
         orderCreatedAt = order.created_at;
 
         // Delete old items
-        await supabase.from("order_items").delete().eq("order_id", editingOrderId);
+        await supabasePublic.from("order_items").delete().eq("order_id", editingOrderId);
 
       } else {
         // Create the order
-        const { data: order, error: orderError } = await supabase
+        const { data: order, error: orderError } = await supabasePublic
           .from("orders")
           .insert([
             {
@@ -258,7 +287,7 @@ const OrderPage: React.FC = () => {
         quantity: line.quantity,
       }));
 
-      const { error: itemsError } = await supabase.from("order_items").insert(itemsPayload);
+      const { error: itemsError } = await supabasePublic.from("order_items").insert(itemsPayload);
       if (itemsError) throw itemsError;
 
       setSubmittedOrder({
@@ -269,13 +298,10 @@ const OrderPage: React.FC = () => {
         status: "Placed"
       });
       setEditingOrderId(null);
+      
     } catch (err: any) {
       console.error("Order submission failed:", err);
-      // TEMP DEBUG — remove after diagnosing the RLS/org mismatch
-      const debugOrgId = base62ToUuid(organizationId || "");
-      setError(
-        `${err.message || "Failed to place order."} [debug: param=${organizationId} decoded=${debugOrgId}]`
-      );
+      setError(err.message || "Failed to place order. Please try again.");
     } finally {
       setSubmitting(false);
     }
