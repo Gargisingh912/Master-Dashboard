@@ -370,11 +370,10 @@ export default function Menu() {
               <button
                 key={tab}
                 onClick={() => setActiveFilter(tab)}
-                className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
-                  activeFilter === tab
+                className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${activeFilter === tab
                     ? "bg-brand-500 text-white"
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/[0.05] dark:text-gray-400 dark:hover:bg-white/[0.08]"
-                }`}
+                  }`}
               >
                 {tab}
               </button>
@@ -468,21 +467,19 @@ export default function Menu() {
                         </button>
                         <button
                           onClick={() => handleToggleAvailability(item)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                            item.isAvailable ? "bg-success-500" : "bg-gray-300 dark:bg-gray-700"
-                          }`}
+                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${item.isAvailable ? "bg-success-500" : "bg-gray-300 dark:bg-gray-700"
+                            }`}
                           title={
                             item.isAvailable
                               ? "Available — click to mark unavailable"
                               : !makeable
-                              ? "Marked unavailable due to low stock — click to override"
-                              : "Unavailable — click to mark available"
+                                ? "Marked unavailable due to low stock — click to override"
+                                : "Unavailable — click to mark available"
                           }
                         >
                           <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              item.isAvailable ? "translate-x-6" : "translate-x-1"
-                            }`}
+                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${item.isAvailable ? "translate-x-6" : "translate-x-1"
+                              }`}
                           />
                         </button>
                         <button

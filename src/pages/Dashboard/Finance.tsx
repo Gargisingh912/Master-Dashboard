@@ -9,7 +9,7 @@ import { useAuth } from "../../hooks/useAuth";
 export default function Finance() {
   const { role } = useAuth();
   const { orders, expenses, addExpense, monthlyGoal, setMonthlyGoal, menu } = useKitchen();
-  const [isEditingGoal, setIsEditingGoal] = useState(true);
+  const [isEditingGoal, setIsEditingGoal] = useState(false);
   const [showAddForm, setShowAddForm] = useState(false);
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
@@ -99,12 +99,20 @@ export default function Finance() {
       <div className="space-y-6">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-bold text-gray-800 dark:text-white/90">Finance Overview</h2>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-          >
-            {showAddForm ? "Cancel" : "Add Expense"}
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setIsEditingGoal(!isEditingGoal)}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5 transition-colors"
+            >
+              {isEditingGoal ? "Cancel" : "Edit Monthly Target"}
+            </button>
+            <button
+              onClick={() => setShowAddForm(!showAddForm)}
+              className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
+            >
+              {showAddForm ? "Cancel" : "Add Expense"}
+            </button>
+          </div>
         </div>
 
         {/* Metrics Cards */}
@@ -129,49 +137,34 @@ export default function Finance() {
           </div>
         </div>
 
-        {/* Monthly Goal Settings */}
-        <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-white/[0.05] dark:bg-white/[0.03]">
-  <div className="flex items-center justify-between">
-    <div>
-      <h3 className="text-lg font-bold text-gray-800 dark:text-white/90">Monthly Target Goal</h3>
-      <p className="text-sm text-gray-500 dark:text-gray-400">
-        {isEditingGoal
-          ? "Set your revenue goal for this month. This connects to the Overview KPI."
-          : "Your monthly target is set. This connects to the Overview KPI."}
-      </p>
-    </div>
-
-    {isEditingGoal ? (
-      <div className="flex items-center gap-2">
-        <span className="text-gray-500 dark:text-gray-400 font-medium">₹</span>
-        <input
-          type="number"
-          value={monthlyGoal}
-          onChange={(e) => setMonthlyGoal(parseFloat(e.target.value) || 0)}
-          className="w-32 rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-        />
-        <button
-          onClick={() => setIsEditingGoal(false)}
-          className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 transition-colors"
-        >
-          Set
-        </button>
-      </div>
-    ) : (
-      <div className="flex items-center gap-3">
-        <span className="text-lg font-semibold text-gray-800 dark:text-white/90">
-          ₹{monthlyGoal.toLocaleString()}
-        </span>
-        <button
-          onClick={() => setIsEditingGoal(true)}
-          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:text-gray-300 dark:hover:bg-white/5 transition-colors"
-        >
-          Edit
-        </button>
-      </div>
-    )}
-  </div>
-</div>
+        {/* Monthly Goal Settings — only visible when editing */}
+        {isEditingGoal && (
+          <div className="rounded-xl border border-brand-200 bg-brand-50/30 p-6 dark:border-brand-500/20 dark:bg-brand-500/5">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 dark:text-white/90">Monthly Target Goal</h3>
+                <p className="text-sm text-gray-500 dark:text-gray-400">
+                  Set your revenue goal for this month. This connects to the Overview KPI.
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-gray-500 dark:text-gray-400 font-medium">₹</span>
+                <input
+                  type="number"
+                  value={monthlyGoal}
+                  onChange={(e) => setMonthlyGoal(parseFloat(e.target.value) || 0)}
+                  className="w-32 rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                />
+                <button
+                  onClick={() => setIsEditingGoal(false)}
+                  className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600 transition-colors"
+                >
+                  Save
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Add Expense Form */}
         {showAddForm && (

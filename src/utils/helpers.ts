@@ -233,3 +233,35 @@ export const base62ToUuid = (base62: string): string => {
     return base62;
   }
 };
+
+/**
+ * Compute best-selling menu item IDs using the same logic as the
+ * "Highest Selling Dishes" KPI on the dashboard Overview:
+ *   - Consider only orders placed in the last 30 days
+ *   - Aggregate total quantity sold per menuItemId
+ *   - Return up to top-5 IDs sorted by quantity descending
+ *   - No minimum threshold — any item sold in the window qualifies
+ */
+export const getBestSellingIds = (
+  orders: Array<{ date: string; items: Array<{ menuItemId: string; quantity: number }> }>,
+  topN = 5
+): string[] => {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000); // last 30 days
+
+  const counts: Record<string, number> = {};
+
+  orders.forEach((order) => {
+    if (!order.date) return;
+    const orderDate = new Date(order.date);
+    if (orderDate < cutoff) return; // outside 30-day window
+    order.items.forEach((item) => {
+      counts[item.menuItemId] = (counts[item.menuItemId] || 0) + item.quantity;
+    });
+  });
+
+  return Object.entries(counts)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, topN)
+    .map(([id]) => id);
+};

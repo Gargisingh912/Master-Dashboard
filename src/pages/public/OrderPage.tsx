@@ -19,6 +19,8 @@ interface CartLine {
   quantity: number;
 }
 
+// Best selling = top 5 by qty sold in last 30 days — matches "Highest Selling Dishes" KPI
+
 const OrderPage: React.FC = () => {
   const { organizationId } = useParams<{ organizationId: string }>();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
@@ -27,7 +29,6 @@ const OrderPage: React.FC = () => {
   const [submitting, setSubmitting] = useState(false);
   const [authReady, setAuthReady] = useState(false);
 
-  // Active category tab (null = "All")
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
   const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
@@ -114,45 +115,94 @@ const OrderPage: React.FC = () => {
     setSubmittedOrder(null);
   };
 
-  // ── Fetch menu ───────────────────────────────────────────────────────────────
+  // ── Fetch menu + recent orders for best-selling computation ──────────────────
   useEffect(() => {
     if (!organizationId) return;
     const actualOrgId = base62ToUuid(organizationId);
 
-    supabasePublic
-      .from("menu_items")
-      .select("id, name, price, category")
-      .eq("organization_id", actualOrgId)
-      .eq("is_available", true)
-      .then(({ data, error }) => {
-        if (error) console.error("Failed to load menu:", error);
-        setMenuItems(data || []);
-        setLoading(false);
+    const fetchData = async () => {
+      // 1. Fetch available menu items
+      const { data: items, error: menuErr } = await supabasePublic
+        .from("menu_items")
+        .select("id, name, price, category")
+        .eq("organization_id", actualOrgId)
+        .eq("is_available", true);
+
+      if (menuErr) console.error("Failed to load menu:", menuErr);
+
+      // 2. Fetch orders from the last 30 days (same window as the
+      //    "Highest Selling Dishes" KPI on the dashboard Overview)
+      const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentOrders, error: ordersErr } = await supabasePublic
+        .from("orders")
+        .select("created_at, order_items(menu_item_id, quantity)")
+        .eq("organization_id", actualOrgId)
+        .gte("created_at", cutoff);
+
+      if (ordersErr) console.error("Failed to load recent orders:", ordersErr);
+
+      // 3. Aggregate per menu item — top 5 by quantity (no minimum)
+      const counts: Record<string, number> = {};
+      (recentOrders || []).forEach((o: any) => {
+        (o.order_items || []).forEach((oi: any) => {
+          counts[oi.menu_item_id] = (counts[oi.menu_item_id] || 0) + (oi.quantity || 0);
+        });
       });
+
+      const top5Ids = Object.entries(counts)
+        .sort(([, a], [, b]) => b - a)
+        .slice(0, 5)
+        .map(([id]) => id);
+
+      setBestSellingIds(top5Ids);
+      setMenuItems((items || []).map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        price: item.price,
+        category: item.category ?? undefined,
+      })));
+      setLoading(false);
+    };
+
+    fetchData();
   }, [organizationId]);
 
-  // ── Category logic ───────────────────────────────────────────────────────────
-  const categories = Array.from(
-    new Set(menuItems.map((m) => m.category || "Other").filter(Boolean))
+  // ── Derived category data ────────────────────────────────────────────────────
+  const [bestSellingIds, setBestSellingIds] = useState<string[]>([]);
+
+  const bestSellingItems = menuItems.filter((m) => bestSellingIds.includes(m.id));
+  // Sort by the order they appear in bestSellingIds (already sorted by qty desc)
+  bestSellingItems.sort((a, b) => bestSellingIds.indexOf(a.id) - bestSellingIds.indexOf(b.id));
+
+  const userCategories = Array.from(
+    new Set(menuItems.map((m) => m.category).filter((c): c is string => !!c))
   ).sort();
 
-  const hasMultipleCategories = categories.length > 1;
+  // Tab list: "Best Selling" first (if any), then user categories
+  const tabs: string[] = [
+    ...(bestSellingItems.length > 0 ? ["Best Selling"] : []),
+    ...userCategories,
+  ];
 
-  // Group items: if all items have no category, treat as flat list
+  // Ensure activeCategory is valid after data loads
+  const resolvedCategory = activeCategory !== null && tabs.includes(activeCategory)
+    ? activeCategory
+    : tabs[0] ?? null;
+
+  // Group by category (used in "All sections" view when no tab is selected, or if no tabs exist)
   const grouped: Record<string, MenuItem[]> = {};
-  menuItems.forEach((item) => {
-    const cat = item.category || "Other";
+  menuItems.forEach((m) => {
+    const cat = m.category || "Other";
     if (!grouped[cat]) grouped[cat] = [];
-    grouped[cat].push(item);
+    grouped[cat].push(m);
   });
 
-  // Visible items for flat (single-category / no-category) mode
-  const visibleItems =
-    hasMultipleCategories && activeCategory
-      ? grouped[activeCategory] || []
-      : hasMultipleCategories
-      ? menuItems
-      : menuItems;
+  // Items for the currently active tab
+  const getTabItems = (tab: string | null): MenuItem[] => {
+    if (tab === "Best Selling") return bestSellingItems;
+    if (tab) return grouped[tab] || [];
+    return menuItems; // fallback: flat list
+  };
 
   // ── Contact lookup ───────────────────────────────────────────────────────────
   const handleContactLookup = async () => {
@@ -194,11 +244,7 @@ const OrderPage: React.FC = () => {
     setCart((prev) => {
       const existing = prev[itemId];
       if (!existing) return prev;
-      if (existing.quantity <= 1) {
-        const next = { ...prev };
-        delete next[itemId];
-        return next;
-      }
+      if (existing.quantity <= 1) { const n = { ...prev }; delete n[itemId]; return n; }
       return { ...prev, [itemId]: { ...existing, quantity: existing.quantity - 1 } };
     });
   };
@@ -210,22 +256,10 @@ const OrderPage: React.FC = () => {
   const handleSubmitOrder = async () => {
     setError("");
 
-    if (!authReady) {
-      setError("Still setting up your session, please wait a second and try again.");
-      return;
-    }
-    if (!name.trim() || !contact.trim()) {
-      setError("Please enter your name and contact number.");
-      return;
-    }
-    if (contact.trim().length !== 10) {
-      setError("Please enter a valid 10-digit phone number.");
-      return;
-    }
-    if (cartLines.length === 0) {
-      setError("Your cart is empty.");
-      return;
-    }
+    if (!authReady) { setError("Still setting up your session, please wait a second and try again."); return; }
+    if (!name.trim() || !contact.trim()) { setError("Please enter your name and contact number."); return; }
+    if (contact.trim().length !== 10) { setError("Please enter a valid 10-digit phone number."); return; }
+    if (cartLines.length === 0) { setError("Your cart is empty."); return; }
 
     setSubmitting(true);
 
@@ -309,7 +343,7 @@ const OrderPage: React.FC = () => {
     }
   };
 
-  // ── Loading state ─────────────────────────────────────────────────────────────
+  // ── Loading ───────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -335,10 +369,7 @@ const OrderPage: React.FC = () => {
           <p className="text-gray-600 mb-6">
             We're sorry, but the kitchen was unable to accept your order at this time. They will contact you soon.
           </p>
-          <button
-            onClick={() => setSubmittedOrder(null)}
-            className="px-6 py-2 bg-gray-100 text-gray-800 font-semibold rounded-lg hover:bg-gray-200"
-          >
+          <button onClick={() => setSubmittedOrder(null)} className="px-6 py-2 bg-gray-100 text-gray-800 font-semibold rounded-lg hover:bg-gray-200">
             Return to Menu
           </button>
         </div>
@@ -400,33 +431,20 @@ const OrderPage: React.FC = () => {
     return (
       <div className="max-w-md mx-auto p-8 text-center bg-white rounded-xl shadow-theme-sm mt-10 border border-brand-200">
         <h1 className="text-2xl font-bold text-gray-800 mb-2">Waiting for Kitchen…</h1>
-
         <div className="my-8 relative w-32 h-32 mx-auto">
-          <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+          <svg className="w-full h-full -rotate-90" viewBox="0 0 36 36">
             <circle cx="18" cy="18" r="16" fill="none" className="stroke-current text-gray-100" strokeWidth="2" />
-            <circle
-              cx="18" cy="18" r="16" fill="none"
-              className="stroke-current text-brand-500 transition-all duration-1000 ease-linear"
-              strokeWidth="2" strokeDasharray="100"
-              strokeDashoffset={100 - (timeLeft / 60) * 100}
-              strokeLinecap="round"
-            />
+            <circle cx="18" cy="18" r="16" fill="none" className="stroke-current text-brand-500 transition-all duration-1000 ease-linear" strokeWidth="2" strokeDasharray="100" strokeDashoffset={100 - (timeLeft / 60) * 100} strokeLinecap="round" />
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span className="text-3xl font-bold text-gray-800">{timeLeft}</span>
             <span className="text-[10px] uppercase font-bold text-gray-400 tracking-wider">Secs</span>
           </div>
         </div>
-
         <p className="text-gray-600 mb-6 text-sm">
-          Your order <strong className="text-gray-900">#{submittedOrder.order_id}</strong> has been sent to the kitchen.
-          Please wait while they accept it.
+          Your order <strong className="text-gray-900">#{submittedOrder.order_id}</strong> has been sent to the kitchen. Please wait while they accept it.
         </p>
-
-        <button
-          onClick={handleEditOrder}
-          className="w-full py-3 bg-gray-100 text-gray-800 font-bold rounded-xl hover:bg-gray-200 transition-colors"
-        >
+        <button onClick={handleEditOrder} className="w-full py-3 bg-gray-100 text-gray-800 font-bold rounded-xl hover:bg-gray-200 transition-colors">
           Edit Order
         </button>
       </div>
@@ -434,36 +452,29 @@ const OrderPage: React.FC = () => {
   }
 
   // ── Main order page ───────────────────────────────────────────────────────────
+  const currentItems = getTabItems(resolvedCategory);
+
   return (
     <div className="max-w-md mx-auto bg-gray-50 min-h-screen">
-      {/* ── Header ── */}
+
+      {/* Sticky header with category tabs */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 pt-5 pb-3">
         <h1 className="text-2xl font-bold text-gray-800 mb-1">Order Menu</h1>
 
-        {/* Category tabs — only shown when there are multiple categories */}
-        {hasMultipleCategories && (
-          <div className="flex gap-2 overflow-x-auto mt-3 pb-1 scrollbar-hide -mx-1 px-1">
-            <button
-              onClick={() => setActiveCategory(null)}
-              className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition-all ${
-                activeCategory === null
-                  ? "bg-brand-500 text-white shadow-sm"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-              }`}
-            >
-              All
-            </button>
-            {categories.map((cat) => (
+        {/* Category tab bar — shown when there are tabs */}
+        {tabs.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto mt-3 pb-1 -mx-1 px-1">
+            {tabs.map((tab) => (
               <button
-                key={cat}
-                onClick={() => setActiveCategory(cat)}
-                className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition-all ${
-                  activeCategory === cat
+                key={tab}
+                onClick={() => setActiveCategory(tab)}
+                className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition-all whitespace-nowrap ${
+                  resolvedCategory === tab
                     ? "bg-brand-500 text-white shadow-sm"
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200"
                 }`}
               >
-                {cat}
+                {tab === "Best Selling" ? "🔥 Best Selling" : tab}
               </button>
             ))}
           </div>
@@ -475,7 +486,7 @@ const OrderPage: React.FC = () => {
           <p className="text-red-500 text-sm mb-4 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>
         )}
 
-        {/* Contact / customer details block */}
+        {/* Contact / customer details */}
         <div className="mb-6 bg-white border border-gray-200 rounded-xl p-5 shadow-theme-xs">
           <label className="block text-sm font-semibold text-gray-700">Contact Number</label>
           <div className="flex gap-3 mt-2">
@@ -495,24 +506,9 @@ const OrderPage: React.FC = () => {
 
           {lookupDone && (
             <div className="mt-4 flex flex-col gap-3">
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="Full name"
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden"
-              />
-              <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="Email (optional)"
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden"
-              />
-              <input
-                value={address}
-                onChange={(e) => setAddress(e.target.value)}
-                placeholder="Address (optional)"
-                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden"
-              />
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden" />
+              <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optional)" className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden" />
+              <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address (optional)" className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden" />
               <div className="relative z-10 w-full">
                 <DatePicker
                   selected={dob}
@@ -520,46 +516,34 @@ const OrderPage: React.FC = () => {
                   dateFormat="yyyy-MM-dd"
                   placeholderText="Date of Birth"
                   className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden"
-                  showMonthDropdown
-                  showYearDropdown
-                  dropdownMode="select"
+                  showMonthDropdown showYearDropdown dropdownMode="select"
                 />
               </div>
             </div>
           )}
         </div>
 
-        {/* ── Menu items (grouped by category or flat) ── */}
-        {hasMultipleCategories && activeCategory === null ? (
-          // Show all categories as sections
-          Object.entries(grouped).map(([cat, items]) => (
-            <div key={cat} ref={(el) => { categoryRefs.current[cat] = el; }} className="mb-6">
-              <h2 className="text-xs uppercase tracking-widest font-bold text-gray-400 mb-3 px-1">{cat}</h2>
-              <div className="flex flex-col gap-3">
-                {items.map((item) => (
-                  <MenuItemCard key={item.id} item={item} cart={cart} onAdd={addToCart} onRemove={removeFromCart} />
-                ))}
-              </div>
-            </div>
-          ))
-        ) : hasMultipleCategories && activeCategory ? (
-          // Filtered to one category
-          <div className="flex flex-col gap-3">
-            {(grouped[activeCategory] || []).map((item) => (
-              <MenuItemCard key={item.id} item={item} cart={cart} onAdd={addToCart} onRemove={removeFromCart} />
-            ))}
-          </div>
-        ) : (
-          // No categories — flat list
+        {/* ── Menu items ── */}
+        {tabs.length === 0 ? (
+          // No categories at all — flat list
           <div className="flex flex-col gap-3">
             {menuItems.map((item) => (
               <MenuItemCard key={item.id} item={item} cart={cart} onAdd={addToCart} onRemove={removeFromCart} />
             ))}
           </div>
+        ) : (
+          // Tabs exist — show filtered list for active tab
+          <div className="flex flex-col gap-3">
+            {currentItems.length > 0 ? currentItems.map((item) => (
+              <MenuItemCard key={item.id} item={item} cart={cart} onAdd={addToCart} onRemove={removeFromCart} />
+            )) : (
+              <p className="text-sm text-gray-400 italic py-4 text-center">No items in this category.</p>
+            )}
+          </div>
         )}
       </div>
 
-      {/* ── Sticky cart bar ── */}
+      {/* Sticky cart bar */}
       {cartLines.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t border-gray-200 z-50">
           <div className="max-w-md mx-auto">
@@ -586,7 +570,7 @@ const OrderPage: React.FC = () => {
   );
 };
 
-// ── MenuItemCard sub-component ─────────────────────────────────────────────────
+// ── MenuItemCard ──────────────────────────────────────────────────────────────
 function MenuItemCard({
   item,
   cart,
@@ -607,27 +591,12 @@ function MenuItemCard({
       <div className="flex items-center gap-3 bg-gray-50 rounded-full p-1 border border-gray-100">
         {cart[item.id] ? (
           <>
-            <button
-              onClick={() => onRemove(item.id)}
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-gray-600 shadow-xs hover:bg-gray-50 transition-colors"
-            >
-              −
-            </button>
+            <button onClick={() => onRemove(item.id)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-gray-600 shadow-xs hover:bg-gray-50 transition-colors">−</button>
             <span className="w-6 text-center font-semibold text-gray-800">{cart[item.id].quantity}</span>
-            <button
-              onClick={() => onAdd(item)}
-              className="w-8 h-8 flex items-center justify-center rounded-full bg-brand-500 text-white shadow-xs hover:bg-brand-600 transition-colors"
-            >
-              +
-            </button>
+            <button onClick={() => onAdd(item)} className="w-8 h-8 flex items-center justify-center rounded-full bg-brand-500 text-white shadow-xs hover:bg-brand-600 transition-colors">+</button>
           </>
         ) : (
-          <button
-            onClick={() => onAdd(item)}
-            className="px-4 py-1.5 rounded-full bg-brand-50 text-brand-600 font-medium text-sm hover:bg-brand-100 transition-colors"
-          >
-            Add
-          </button>
+          <button onClick={() => onAdd(item)} className="px-4 py-1.5 rounded-full bg-brand-50 text-brand-600 font-medium text-sm hover:bg-brand-100 transition-colors">Add</button>
         )}
       </div>
     </div>
