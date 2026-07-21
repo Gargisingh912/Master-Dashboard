@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import { useKitchen, MenuIngredient } from "../../context/KitchenContext";
+import { Trash2 } from "lucide-react";
 
 interface IngredientRow {
   inventoryId: string;
@@ -83,42 +84,83 @@ function IngredientEditor({
   );
 }
 
-import { Trash2 } from "lucide-react";
+// ─── Pastel colours cycled by category name ───────────────────────────────────
+const BADGE_COLOURS = [
+  "bg-violet-100 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300",
+  "bg-sky-100 text-sky-700 dark:bg-sky-900/20 dark:text-sky-300",
+  "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300",
+  "bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300",
+  "bg-rose-100 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300",
+  "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300",
+  "bg-teal-100 text-teal-700 dark:bg-teal-900/20 dark:text-teal-300",
+  "bg-orange-100 text-orange-700 dark:bg-orange-900/20 dark:text-orange-300",
+];
+
+function useCategoryColour(categories: string[]) {
+  const map = useMemo(() => {
+    const m: Record<string, string> = {};
+    categories.forEach((c, i) => {
+      m[c] = BADGE_COLOURS[i % BADGE_COLOURS.length];
+    });
+    return m;
+  }, [categories]);
+  return (cat: string) => map[cat] ?? BADGE_COLOURS[0];
+}
 
 export default function Menu() {
   const { menu, inventory, addMenuItem, updateMenuItem, deleteMenuItem, setMenuItemAvailability } = useKitchen();
 
+  // ── add-form state ──────────────────────────────────────────────────────────
   const [showAddForm, setShowAddForm] = useState(false);
   const [newDishName, setNewDishName] = useState("");
   const [newDishPrice, setNewDishPrice] = useState("");
+  const [newDishCategory, setNewDishCategory] = useState("");
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
 
+  // ── edit state ──────────────────────────────────────────────────────────────
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
+  const [editCategory, setEditCategory] = useState("");
   const [editIngredients, setEditIngredients] = useState<IngredientRow[]>([]);
 
-  // Tracks which items we've already auto-disabled, so repeated renders
-  // don't keep re-firing the same update call once it's already off.
+  // ── filter state ────────────────────────────────────────────────────────────
+  const [activeFilter, setActiveFilter] = useState<string>("All");
+
+  // ── auto-disable tracking ───────────────────────────────────────────────────
   const autoDisabledRef = useRef<Set<string>>(new Set());
+  const LOW_STOCK_MULTIPLIER = 5;
 
-  // Low-stock threshold: an ingredient is "low" once stock drops below
-// 5x what a single dish requires. Below that, the dish is auto-marked
-// unavailable so it can't be sold without enough buffer stock.
-const LOW_STOCK_MULTIPLIER = 5;
+  // ── derived lists ───────────────────────────────────────────────────────────
+  const existingCategories = useMemo(() => {
+    const cats = new Set<string>();
+    menu.forEach((m) => { if (m.category) cats.add(m.category); });
+    return Array.from(cats).sort();
+  }, [menu]);
 
-const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
-  if (item.ingredients.length === 0) return true; // no recipe defined — no constraint
-  return item.ingredients.every((ing) => {
-    const invItem = inventory.find((i) => i.id === ing.inventoryId);
-    if (!invItem) return false; // referenced ingredient no longer exists
-    return invItem.quantity >= ing.quantity * LOW_STOCK_MULTIPLIER;
-  });
-};
+  const filterTabs = ["All", ...existingCategories];
 
-  // Auto-disable availability when stock can't support 2x, so the
-  // persisted is_available reflects reality. Manual re-enable is still
-  // allowed afterward — see handleToggleAvailability below.
+  const filteredMenu = useMemo(() => {
+    if (activeFilter === "All") return menu;
+    return menu.filter((m) =>
+      activeFilter === "Uncategorized"
+        ? !m.category
+        : m.category === activeFilter
+    );
+  }, [menu, activeFilter]);
+
+  const getCategoryColour = useCategoryColour(existingCategories);
+
+  // ── stock check ─────────────────────────────────────────────────────────────
+  const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
+    if (item.ingredients.length === 0) return true;
+    return item.ingredients.every((ing) => {
+      const invItem = inventory.find((i) => i.id === ing.inventoryId);
+      if (!invItem) return false;
+      return invItem.quantity >= ing.quantity * LOW_STOCK_MULTIPLIER;
+    });
+  };
+
   useEffect(() => {
     menu.forEach((item) => {
       const makeable = hasSufficientStock(item);
@@ -133,6 +175,7 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventory, menu]);
 
+  // ── add-form handlers ───────────────────────────────────────────────────────
   const handleAddIngredient = () => {
     if (inventory.length > 0) {
       setIngredients([...ingredients, { inventoryId: inventory[0].id, quantity: 1, unit: inventory[0].unit || "kg" }]);
@@ -141,14 +184,9 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
 
   const handleUpdateIngredient = (index: number, field: string, value: string) => {
     const updated = [...ingredients];
-    if (field === "inventoryId") {
-      updated[index].inventoryId = value;
-      // We intentionally do NOT reset updated[index].unit here so that if the user already selected "gram", it stays "gram".
-    } else if (field === "quantity") {
-      updated[index].quantity = parseFloat(value) || 0;
-    } else if (field === "unit") {
-      updated[index].unit = value;
-    }
+    if (field === "inventoryId") updated[index].inventoryId = value;
+    else if (field === "quantity") updated[index].quantity = parseFloat(value) || 0;
+    else if (field === "unit") updated[index].unit = value;
     setIngredients(updated);
   };
 
@@ -163,21 +201,23 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
     addMenuItem({
       name: newDishName,
       price: parseFloat(newDishPrice),
-      ingredients: ingredients,
+      category: newDishCategory.trim() || undefined,
+      ingredients,
     });
 
     setNewDishName("");
     setNewDishPrice("");
+    setNewDishCategory("");
     setIngredients([]);
     setShowAddForm(false);
   };
 
-  // --- Edit flow ---
-
+  // ── edit handlers ───────────────────────────────────────────────────────────
   const startEditing = (item: typeof menu[number]) => {
     setEditingId(item.id);
     setEditName(item.name);
     setEditPrice(String(item.price));
+    setEditCategory(item.category ?? "");
     setEditIngredients(item.ingredients.map((ing) => ({ ...ing })));
   };
 
@@ -185,6 +225,7 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
     setEditingId(null);
     setEditName("");
     setEditPrice("");
+    setEditCategory("");
     setEditIngredients([]);
   };
 
@@ -196,14 +237,9 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
 
   const handleEditUpdateIngredient = (index: number, field: string, value: string) => {
     const updated = [...editIngredients];
-    if (field === "inventoryId") {
-      updated[index].inventoryId = value;
-      // We intentionally do NOT reset updated[index].unit here so that if the user already selected "gram", it stays "gram".
-    } else if (field === "quantity") {
-      updated[index].quantity = parseFloat(value) || 0;
-    } else if (field === "unit") {
-      updated[index].unit = value;
-    }
+    if (field === "inventoryId") updated[index].inventoryId = value;
+    else if (field === "quantity") updated[index].quantity = parseFloat(value) || 0;
+    else if (field === "unit") updated[index].unit = value;
     setEditIngredients(updated);
   };
 
@@ -217,15 +253,13 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
     updateMenuItem(id, {
       name: editName,
       price: parseFloat(editPrice),
+      category: editCategory.trim() || undefined,
       ingredients: editIngredients,
     });
 
     cancelEditing();
   };
 
-  // Manual toggle always allowed — the owner can override the automatic
-  // low-stock disable (e.g. restock arriving shortly), and can also
-  // manually turn an item off regardless of stock levels.
   const handleToggleAvailability = (item: typeof menu[number]) => {
     setMenuItemAvailability(item.id, !item.isAvailable);
   };
@@ -236,10 +270,40 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
     }
   };
 
+  // ── category input (shared between add and edit forms) ──────────────────────
+  const CategoryInput = ({
+    value,
+    onChange,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+  }) => (
+    <div>
+      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+        Category <span className="text-gray-400 font-normal">(optional)</span>
+      </label>
+      <input
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        list="category-suggestions"
+        placeholder="e.g. Starters, Main Course, Drinks…"
+        className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+      />
+      <datalist id="category-suggestions">
+        {existingCategories.map((cat) => (
+          <option key={cat} value={cat} />
+        ))}
+      </datalist>
+    </div>
+  );
+
   return (
     <>
       <PageMeta title="Menu Management | Kitchen Dashboard" description="Manage dishes and ingredients" />
       <div className="space-y-6">
+
+        {/* ── Header ── */}
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-bold text-gray-800 dark:text-white/90">Menu Items</h2>
           <button
@@ -250,11 +314,12 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
           </button>
         </div>
 
+        {/* ── Add form ── */}
         {showAddForm && (
           <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-white/[0.05] dark:bg-white/[0.03]">
             <h3 className="text-lg font-medium text-gray-800 dark:text-white/90 mb-4">Add New Dish</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Name</label>
                   <input
@@ -275,6 +340,7 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
                     required
                   />
                 </div>
+                <CategoryInput value={newDishCategory} onChange={setNewDishCategory} />
               </div>
 
               <IngredientEditor
@@ -297,8 +363,28 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
           </div>
         )}
 
+        {/* ── Category filter tabs ── */}
+        {filterTabs.length > 1 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+            {filterTabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveFilter(tab)}
+                className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${
+                  activeFilter === tab
+                    ? "bg-brand-500 text-white"
+                    : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/[0.05] dark:text-gray-400 dark:hover:bg-white/[0.08]"
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── Menu cards grid ── */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {menu.map((item) => {
+          {filteredMenu.map((item) => {
             const makeable = hasSufficientStock(item);
             const isEditing = editingId === item.id;
 
@@ -322,6 +408,19 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
                           type="number"
                           value={editPrice}
                           onChange={(e) => setEditPrice(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">
+                          Category <span className="text-gray-400 font-normal">(optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={editCategory}
+                          onChange={(e) => setEditCategory(e.target.value)}
+                          list="category-suggestions"
+                          placeholder="e.g. Starters, Main Course…"
                           className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                         />
                       </div>
@@ -352,22 +451,21 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
                   </div>
                 ) : (
                   <>
-                    <div className="flex justify-between items-start mb-4">
-                      <div>
-  <h3 className={`text-lg font-semibold ${!makeable ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-white/90"}`}>
-    {item.name}
-  </h3>
-  <span className="font-medium text-brand-500">₹{item.price}</span>
-</div>
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex-1 min-w-0 pr-3">
+                        <h3 className={`text-lg font-semibold truncate ${!makeable ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-white/90"}`}>
+                          {item.name}
+                        </h3>
+                        <span className="font-medium text-brand-500">₹{item.price}</span>
+                      </div>
 
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 shrink-0">
                         <button
                           onClick={() => startEditing(item)}
                           className="text-sm text-brand-500 hover:text-brand-600 font-medium"
                         >
                           Edit
                         </button>
-
                         <button
                           onClick={() => handleToggleAvailability(item)}
                           className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
@@ -377,7 +475,7 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
                             item.isAvailable
                               ? "Available — click to mark unavailable"
                               : !makeable
-                              ? "Marked unavailable due to low stock — click to override and turn on anyway"
+                              ? "Marked unavailable due to low stock — click to override"
                               : "Unavailable — click to mark available"
                           }
                         >
@@ -389,7 +487,7 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
                         </button>
                         <button
                           onClick={() => handleDelete(item.id)}
-                          className="text-red-500 hover:text-red-700 ml-2"
+                          className="text-red-500 hover:text-red-700 ml-1"
                           title="Delete Dish"
                         >
                           <Trash2 size={18} />
@@ -397,24 +495,34 @@ const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
                       </div>
                     </div>
 
+                    {/* Category badge */}
+                    {item.category && (
+                      <span className={`inline-block mb-3 rounded-full px-2.5 py-0.5 text-xs font-semibold ${getCategoryColour(item.category)}`}>
+                        {item.category}
+                      </span>
+                    )}
+
+                    {/* Low-stock warning */}
                     {!makeable && (
-  <div className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:bg-red-900/10 dark:text-red-400">
-    <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className="shrink-0">
-      <path fillRule="evenodd" clipRule="evenodd" d="M8.257 3.099c.765-1.36 2.72-1.36 3.486 0l6.516 11.598c.75 1.334-.213 2.987-1.743 2.987H3.484c-1.53 0-2.493-1.653-1.743-2.987L8.257 3.1zM10 7a1 1 0 011 1v3a1 1 0 11-2 0V8a1 1 0 011-1zm0 7a1 1 0 100 2 1 1 0 000-2z" />
-    </svg>
-    <span>Low stock — restock {item.name} soon</span>
-  </div>
-)}
+                      <div className="mb-3 flex items-center gap-1.5 rounded-lg bg-red-50 px-2.5 py-1.5 text-xs font-medium text-red-600 dark:bg-red-900/10 dark:text-red-400">
+                        <svg width="14" height="14" viewBox="0 0 20 20" fill="currentColor" className="shrink-0">
+                          <path fillRule="evenodd" clipRule="evenodd" d="M8.257 3.099c.765-1.36 2.72-1.36 3.486 0l6.516 11.598c.75 1.334-.213 2.987-1.743 2.987H3.484c-1.53 0-2.493-1.653-1.743-2.987L8.257 3.1zM10 7a1 1 0 011 1v3a1 1 0 11-2 0V8a1 1 0 011-1zm0 7a1 1 0 100 2 1 1 0 000-2z" />
+                        </svg>
+                        <span>Low stock — restock {item.name} soon</span>
+                      </div>
+                    )}
+
+                    {/* Ingredients */}
                     <div>
                       <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Ingredients</h4>
                       <ul className="space-y-1">
                         {item.ingredients.map((ing, idx) => {
                           const invItem = inventory.find((i) => i.id === ing.inventoryId);
-                          const isLowStock = invItem && invItem.quantity < ing.quantity * 5; // LOW_STOCK_MULTIPLIER
+                          const isLowStock = invItem && invItem.quantity < ing.quantity * 5;
                           return (
-                            <li key={idx} className={`text-sm flex justify-between ${isLowStock ? 'text-red-600 dark:text-red-400 font-medium' : 'text-gray-700 dark:text-gray-300'}`}>
+                            <li key={idx} className={`text-sm flex justify-between ${isLowStock ? "text-red-600 dark:text-red-400 font-medium" : "text-gray-700 dark:text-gray-300"}`}>
                               <span>{invItem?.name || "Unknown"}</span>
-                              <span className={isLowStock ? 'text-red-500 dark:text-red-400' : 'text-gray-500'}>
+                              <span className={isLowStock ? "text-red-500 dark:text-red-400" : "text-gray-500"}>
                                 {ing.quantity} {ing.unit || invItem?.unit || ""}
                               </span>
                             </li>

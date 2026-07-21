@@ -20,6 +20,7 @@ export interface MenuItem {
   id: string;
   name: string;
   price: number;
+  category?: string;
   ingredients: MenuIngredient[];
   isAvailable: boolean;
 }
@@ -68,7 +69,7 @@ interface KitchenContextType {
   updateExpense: (id: string, updates: Omit<Expense, "id" | "date">) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   monthlyGoal: number;
-  updateMenuItem: (id: string, updates: { name: string; price: number; ingredients: MenuIngredient[] }) => Promise<void>;
+  updateMenuItem: (id: string, updates: { name: string; price: number; category?: string; ingredients: MenuIngredient[] }) => Promise<void>;
   deleteMenuItem: (id: string) => Promise<void>;
   setMenuItemAvailability: (id: string, isAvailable: boolean) => Promise<void>;
   setMonthlyGoal: (goal: number) => void;
@@ -163,6 +164,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         id: item.id,
         name: item.name,
         price: item.price,
+        category: item.category ?? undefined,
         isAvailable: item.is_available,
         ingredients: (item.menu_ingredients || []).map((ing: any) => ({
           inventoryId: ing.inventory_item_id,
@@ -329,6 +331,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       organization_id: orgId,
       name: item.name,
       price: item.price,
+      category: item.category || null,
       is_available: true,
     }).select().single();
 
@@ -356,16 +359,16 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
-    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true }]);
+    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true, category: item.category }]);
   };
 
   const updateMenuItem = async (
     id: string,
-    updates: { name: string; price: number; ingredients: MenuIngredient[] }
+    updates: { name: string; price: number; category?: string; ingredients: MenuIngredient[] }
   ) => {
     const { error: updateError } = await supabase
       .from('menu_items')
-      .update({ name: updates.name, price: updates.price })
+      .update({ name: updates.name, price: updates.price, category: updates.category || null })
       .eq('id', id);
 
     if (updateError) {
@@ -411,7 +414,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     setMenu(prev =>
       prev.map(m =>
         m.id === id
-          ? { ...m, name: updates.name, price: updates.price, ingredients: updates.ingredients }
+          ? { ...m, name: updates.name, price: updates.price, category: updates.category, ingredients: updates.ingredients }
           : m
       )
     );

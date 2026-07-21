@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS menu_items (
 );
 
 DO $$ BEGIN ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS is_available BOOLEAN NOT NULL DEFAULT true; EXCEPTION WHEN OTHERS THEN NULL; END $$;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS category TEXT;
 
 
 -- ============================================================================
@@ -203,6 +204,7 @@ ALTER TABLE customers ADD COLUMN IF NOT EXISTS dob     DATE;
 -- ============================================================================
 CREATE INDEX IF NOT EXISTS idx_inventory_items_org      ON inventory_items(organization_id);
 CREATE INDEX IF NOT EXISTS idx_menu_items_org           ON menu_items(organization_id);
+CREATE INDEX IF NOT EXISTS idx_menu_items_org_category  ON menu_items(organization_id, category);
 CREATE INDEX IF NOT EXISTS idx_menu_ingredients_menu    ON menu_ingredients(menu_item_id);
 CREATE INDEX IF NOT EXISTS idx_menu_ingredients_inv     ON menu_ingredients(inventory_item_id);
 CREATE INDEX IF NOT EXISTS idx_orders_org               ON orders(organization_id);
