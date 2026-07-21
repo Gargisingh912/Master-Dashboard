@@ -177,16 +177,57 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
 };
 
 /**
- * Play notification sound
+ * Play notification sound using Web Audio API
+ * Loud, 5-second repeating alarm designed for busy kitchens
  */
 export const playNotificationSound = () => {
-  const audio = new Audio(
-    "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBjaP1fPTgjMGHm7A7+OZSA0OVaztl"
-  );
-  audio.volume = 0.3;
-  audio.play().catch(() => {
-    // Ignore if autoplay is blocked
-  });
+  try {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const now = ctx.currentTime;
+
+    // 3 rapid bursts, repeated 3 times over ~5 seconds
+    const burstPattern = [
+      // Round 1
+      { freq: 880, start: 0.0, dur: 0.15 },   // A5
+      { freq: 1100, start: 0.18, dur: 0.15 },  // C#6
+      { freq: 880, start: 0.36, dur: 0.15 },   // A5
+      // Pause
+      // Round 2
+      { freq: 880, start: 1.2, dur: 0.15 },
+      { freq: 1100, start: 1.38, dur: 0.15 },
+      { freq: 880, start: 1.56, dur: 0.15 },
+      // Pause
+      // Round 3
+      { freq: 880, start: 2.4, dur: 0.15 },
+      { freq: 1100, start: 2.58, dur: 0.15 },
+      { freq: 880, start: 2.76, dur: 0.15 },
+      // Pause
+      // Round 4 — higher urgency
+      { freq: 1100, start: 3.6, dur: 0.12 },
+      { freq: 1320, start: 3.75, dur: 0.12 },
+      { freq: 1100, start: 3.9, dur: 0.12 },
+      { freq: 1320, start: 4.05, dur: 0.12 },
+      { freq: 1100, start: 4.2, dur: 0.12 },
+      { freq: 1320, start: 4.35, dur: 0.3 },
+    ];
+
+    burstPattern.forEach(({ freq, start, dur }) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.type = "square"; // harsher, cuts through kitchen noise
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.8, now + start); // loud
+      gain.gain.exponentialRampToValueAtTime(0.01, now + start + dur);
+      osc.start(now + start);
+      osc.stop(now + start + dur);
+    });
+
+    setTimeout(() => ctx.close(), 6000);
+  } catch {
+    // Ignore — AudioContext not available
+  }
 };
 
 /**
