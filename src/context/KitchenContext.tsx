@@ -61,6 +61,7 @@ interface KitchenContextType {
   expenses: Expense[];
   addInventoryItem: (item: Omit<InventoryItem, "id">) => Promise<void>;
   updateInventoryQuantity: (id: string, quantity: number) => Promise<void>;
+  updateInventoryItem: (id: string, updates: { name?: string; unit?: string; category?: string; quantity?: number }) => Promise<void>;
   deleteInventoryItem: (id: string) => Promise<void>;
   addMenuItem: (item: Omit<MenuItem, "id" | "isAvailable">) => Promise<void>;
   addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => Promise<void>;
@@ -319,6 +320,29 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     }
 
     setInventory(prev => prev.filter(i => i.id !== id));
+  };
+
+  const updateInventoryItem = async (id: string, updates: { name?: string; unit?: string; category?: string; quantity?: number }) => {
+    const payload: Record<string, any> = {};
+    if (updates.name !== undefined) payload.name = updates.name;
+    if (updates.unit !== undefined) payload.unit = updates.unit;
+    if (updates.category !== undefined) payload.category = updates.category || null;
+    if (updates.quantity !== undefined) payload.quantity = updates.quantity;
+
+    const { error } = await supabase
+      .from('inventory_items')
+      .update(payload)
+      .eq('id', id);
+
+    if (error) {
+      console.error(error);
+      setError(error.message);
+      return;
+    }
+
+    setInventory(prev =>
+      prev.map(i => (i.id === id ? { ...i, ...updates } : i))
+    );
   };
 
   const addMenuItem = async (item: Omit<MenuItem, "id" | "isAvailable">) => {
@@ -680,6 +704,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         expenses,
         addInventoryItem,
         updateInventoryQuantity,
+        updateInventoryItem,
         deleteInventoryItem,
         addMenuItem,
         updateMenuItem,
