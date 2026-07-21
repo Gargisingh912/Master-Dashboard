@@ -30,7 +30,7 @@ const OrderPage: React.FC = () => {
   const [authReady, setAuthReady] = useState(false);
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
-  const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  // const categoryRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const [contact, setContact] = useState("");
   const [name, setName] = useState("");
@@ -468,11 +468,10 @@ const OrderPage: React.FC = () => {
               <button
                 key={tab}
                 onClick={() => setActiveCategory(tab)}
-                className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition-all whitespace-nowrap ${
-                  resolvedCategory === tab
+                className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition-all whitespace-nowrap ${resolvedCategory === tab
                     ? "bg-brand-500 text-white shadow-sm"
                     : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                }`}
+                  }`}
               >
                 {tab === "Best Selling" ? "🔥 Best Selling" : tab}
               </button>
