@@ -408,9 +408,9 @@ const LandingPage: React.FC = () => {
                             <ul className="space-y-2">
                                 <li>
                                     <a
-                                        href="#"
+                                        href="https://gargiai.gargisinghwork22.workers.dev/" 
                                         className="text-sm text-gray-500 hover:text-gray-800 "
-                                    >
+                                     target="_blank">
                                         About Us
                                     </a>
                                 </li>
