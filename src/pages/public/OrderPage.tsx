@@ -125,7 +125,7 @@ const OrderPage: React.FC = () => {
       // 1. Fetch available menu items
       const { data: items, error: menuErr } = await supabasePublic
         .from("menu_items")
-        .select("id, name, price, category")
+        .select("id, name, price, category, image_url")
         .eq("organization_id", actualOrgId)
         .eq("is_available", true);
 

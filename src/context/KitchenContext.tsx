@@ -72,7 +72,7 @@ interface KitchenContextType {
   updateExpense: (id: string, updates: Omit<Expense, "id" | "date">) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   monthlyGoal: number;
-  updateMenuItem: (id: string, updates: { name: string; price: number; category?: string; ingredients: MenuIngredient[] }) => Promise<void>;
+  updateMenuItem: (id: string, updates: { name: string; price: number; category?: string; image_url?: string; ingredients: MenuIngredient[] }) => Promise<void>;
   deleteMenuItem: (id: string) => Promise<void>;
   setMenuItemAvailability: (id: string, isAvailable: boolean) => Promise<void>;
   setMonthlyGoal: (goal: number) => void;

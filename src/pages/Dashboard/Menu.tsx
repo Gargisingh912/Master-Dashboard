@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
+import { supabase } from "../../config/supabase";
 import { useKitchen, MenuIngredient } from "../../context/KitchenContext";
 import { Trash2 } from "lucide-react";
 
@@ -203,6 +204,40 @@ export default function Menu() {
   const [editCategory, setEditCategory] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
   const [editIngredients, setEditIngredients] = useState<IngredientRow[]>([]);
+  const [isUploading, setIsUploading] = useState(false);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploading(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const filePath = `dishes/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('menu-images')
+        .upload(filePath, file);
+
+      if (uploadError) throw uploadError;
+
+      const { data } = supabase.storage
+        .from('menu-images')
+        .getPublicUrl(filePath);
+
+      if (isEdit) {
+        setEditImageUrl(data.publicUrl);
+      } else {
+        setNewDishImageUrl(data.publicUrl);
+      }
+    } catch (error) {
+      console.error("Error uploading image:", error);
+      alert("Failed to upload image. Make sure the bucket 'menu-images' exists and is public.");
+    } finally {
+      setIsUploading(false);
+    }
+  };
 
   // ── filter state ────────────────────────────────────────────────────────────
   const [activeFilter, setActiveFilter] = useState<string>("All");
@@ -427,14 +462,23 @@ export default function Menu() {
                 </div>
                 <CategoryInput value={newDishCategory} onChange={setNewDishCategory} />
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Image URL</label>
-                  <input
-                    type="url"
-                    value={newDishImageUrl}
-                    onChange={(e) => setNewDishImageUrl(e.target.value)}
-                    placeholder="https://..."
-                    className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                  />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Image</label>
+                  <div className="flex items-center gap-3">
+                    {newDishImageUrl && (
+                      <div className="h-10 w-10 shrink-0 overflow-hidden rounded bg-gray-100">
+                        <img src={newDishImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                      </div>
+                    )}
+                    <div className="flex-1">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleImageUpload(e, false)}
+                        disabled={isUploading}
+                        className="w-full text-sm text-gray-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-500/10 dark:file:text-brand-400 disabled:opacity-50"
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -520,13 +564,13 @@ export default function Menu() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Image URL</label>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Image</label>
                         <input
-                          type="url"
-                          value={editImageUrl}
-                          onChange={(e) => setEditImageUrl(e.target.value)}
-                          placeholder="https://..."
-                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                          type="file"
+                          accept="image/*"
+                          onChange={(e) => handleImageUpload(e, true)}
+                          disabled={isUploading}
+                          className="w-full text-sm text-gray-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-500/10 dark:file:text-brand-400 disabled:opacity-50"
                         />
                       </div>
                     </div>
