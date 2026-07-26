@@ -59,7 +59,7 @@ interface KitchenContextType {
   menu: MenuItem[];
   orders: Order[];
   expenses: Expense[];
-  addInventoryItem: (item: Omit<InventoryItem, "id">) => Promise<void>;
+  addInventoryItem: (item: Omit<InventoryItem, "id">) => Promise<string | undefined>;
   updateInventoryQuantity: (id: string, quantity: number) => Promise<void>;
   updateInventoryItem: (id: string, updates: { name?: string; unit?: string; category?: string; quantity?: number }) => Promise<void>;
   deleteInventoryItem: (id: string) => Promise<void>;
@@ -262,10 +262,10 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     return qty;
   };
 
-  const addInventoryItem = async (item: Omit<InventoryItem, "id">) => {
+  const addInventoryItem = async (item: Omit<InventoryItem, "id">): Promise<string | undefined> => {
     if (!orgId) {
       setError("No organization context — please log in again.");
-      return;
+      return undefined;
     }
 
     const { data, error } = await supabase.from('inventory_items').insert({
@@ -279,10 +279,11 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (error) {
       console.error(error);
       setError(error.message);
-      return;
+      return undefined;
     }
 
     setInventory(prev => [...prev, { ...item, id: data.id }]);
+    return data.id;
   };
 
   // Delegates to a Postgres function (adjust_inventory_quantity) so the
@@ -503,9 +504,9 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     const { data: orderData, error: orderError } = await supabase.from('orders').insert({
       organization_id: orgId,
       customer_name: customerName,
-      customer_contact: contact ?? null,
-      customer_email: email ?? null,
-      customer_dob: dob ?? null,
+      customer_contact: contact && contact.trim() !== "" ? contact.trim() : null,
+      customer_email: email && email.trim() !== "" ? email.trim() : null,
+      customer_dob: dob && dob.trim() !== "" ? dob : null,
       discount,
       total,
       status: 'Placed',

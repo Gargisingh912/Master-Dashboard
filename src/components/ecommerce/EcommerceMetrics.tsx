@@ -2,13 +2,14 @@ import {
   BoxIconLine,
 } from "../../icons";
 import { useKitchen, MenuIngredient } from "../../context/KitchenContext";
+import { CardSkeleton } from "../ui/skeleton/Skeleton";
 
 // Same threshold/logic as menu.tsx — an ingredient is "low" once stock
 // drops below 5x what a single dish requires.
 const LOW_STOCK_MULTIPLIER = 5;
 
 export default function EcommerceMetrics() {
-  const { orders, menu, inventory } = useKitchen();
+  const { orders, menu, inventory, loading } = useKitchen();
 
   const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
     if (item.ingredients.length === 0) return true; // no recipe defined — no constraint
@@ -29,6 +30,18 @@ export default function EcommerceMetrics() {
   const placedCount = orders.filter(o => o.status === "Placed").length;
   const preparingCount = orders.filter(o => o.status === "Preparing").length;
   const deliveredCount = orders.filter(o => o.status === "Delivered").length;
+
+  if (loading) {
+    return (
+      <div className="space-y-4 md:space-y-6">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+        <CardSkeleton />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4 md:space-y-6">

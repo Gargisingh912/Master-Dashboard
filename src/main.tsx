@@ -7,15 +7,21 @@ import App from "./App.tsx";
 import { AppWrapper } from "./components/common/PageMeta.tsx";
 import { ThemeProvider } from "./context/ThemeContext.tsx";
 import { KitchenProvider } from "./context/KitchenContext.tsx";
+import { OrderDraftProvider } from "./context/OrderDraftContext.tsx";
+import ErrorBoundary from "./components/common/ErrorBoundary.tsx";
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <ThemeProvider>
-      <KitchenProvider>
-        <AppWrapper>
-          <App />
-        </AppWrapper>
-      </KitchenProvider>
-    </ThemeProvider>
+    <ErrorBoundary>
+      <ThemeProvider>
+        <KitchenProvider>
+          <OrderDraftProvider>
+            <AppWrapper>
+              <App />
+            </AppWrapper>
+          </OrderDraftProvider>
+        </KitchenProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

@@ -11,6 +11,7 @@ import {
 import { useState, useRef } from "react";
 import { useKitchen } from "../../../context/KitchenContext";
 import { Edit, Check, X, FileText, Printer } from "lucide-react";
+import { TableRowSkeleton } from "../../ui/skeleton/Skeleton";
 
 const playAcceptSound = () => {
   const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
@@ -32,7 +33,7 @@ const playAcceptSound = () => {
 };
 
 export default function OrdersTable() {
-  const { orders, menu, updateOrderStatus, updateOrder } = useKitchen();
+  const { orders, menu, updateOrderStatus, updateOrder, loading } = useKitchen();
   const [editingOrderId, setEditingOrderId] = useState<string | null>(null);
   const [editingItems, setEditingItems] = useState<any[]>([]);
   const [invoiceOrder, setInvoiceOrder] = useState<any>(null);
@@ -77,14 +78,7 @@ export default function OrdersTable() {
   };
   
   const handlePrint = () => {
-    if (invoiceRef.current) {
-      const printContents = invoiceRef.current.innerHTML;
-      const originalContents = document.body.innerHTML;
-      document.body.innerHTML = printContents;
-      window.print();
-      document.body.innerHTML = originalContents;
-      window.location.reload(); // Reload to restore React state cleanly
-    }
+    window.print();
   };
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
@@ -134,7 +128,12 @@ export default function OrdersTable() {
 
   {/* Table Body */}
   <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-    {orders.filter(o => o.status !== "Declined" && o.status !== "Missed" && o.status !== "Cancelled").map((order) => (
+    {loading ? (
+      Array.from({ length: 4 }).map((_, idx) => (
+        <TableRowSkeleton key={idx} cols={6} />
+      ))
+    ) : (
+      orders.filter(o => o.status !== "Declined" && o.status !== "Missed" && o.status !== "Cancelled").map((order) => (
       <TableRow key={order.id}>
         {/* Order ID (display number, UUID retained internally) */}
         <TableCell className="px-5 py-4 sm:px-6 text-start">
@@ -249,7 +248,7 @@ export default function OrdersTable() {
           )}
         </TableCell>
       </TableRow>
-    ))}
+    )))}
   </TableBody>
 
 </Table>
@@ -266,7 +265,7 @@ export default function OrdersTable() {
               <X size={24} />
             </button>
             
-            <div ref={invoiceRef} className="p-8 text-gray-800 dark:text-white">
+            <div ref={invoiceRef} id="printable-invoice" className="p-8 text-gray-800 dark:text-white">
               <div className="text-center mb-6 border-b border-gray-200 dark:border-gray-700 pb-4">
                 <h2 className="text-2xl font-bold uppercase tracking-widest">INVOICE</h2>
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Order #{orders.length - orders.findIndex(o => o.id === invoiceOrder.id)}</p>

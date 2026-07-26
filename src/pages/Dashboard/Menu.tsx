@@ -15,25 +15,103 @@ function IngredientEditor({
   onAdd,
   onUpdate,
   onRemove,
+  addInventoryItem,
 }: {
   ingredients: IngredientRow[];
   inventory: any[];
   onAdd: () => void;
   onUpdate: (index: number, field: string, value: string) => void;
   onRemove: (index: number) => void;
+  addInventoryItem: (item: { name: string; quantity: number; unit: string; category?: string }) => Promise<string | undefined>;
 }) {
+  const [showQuickAdd, setShowQuickAdd] = useState(false);
+  const [quickName, setQuickName] = useState("");
+  const [quickUnit, setQuickUnit] = useState("kg");
+  const [quickQty, setQuickQty] = useState("10");
+  const [quickCategory, setQuickCategory] = useState("Raw Material");
+
+  const handleQuickCreate = async () => {
+    if (!quickName.trim()) return;
+    const newId = await addInventoryItem({
+      name: quickName.trim(),
+      quantity: parseFloat(quickQty) || 0,
+      unit: quickUnit,
+      category: quickCategory,
+    });
+    if (newId) {
+      onAdd();
+      setTimeout(() => {
+        onUpdate(ingredients.length, "inventoryId", newId);
+      }, 50);
+    }
+    setQuickName("");
+    setShowQuickAdd(false);
+  };
+
   return (
     <div>
       <div className="flex justify-between items-center mb-2">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Ingredients</label>
-        <button
-          type="button"
-          onClick={onAdd}
-          className="text-sm text-brand-500 hover:text-brand-600 font-medium"
-        >
-          + Add Ingredient
-        </button>
+        <div className="flex gap-3">
+          <button
+            type="button"
+            onClick={() => setShowQuickAdd(!showQuickAdd)}
+            className="text-xs text-brand-500 hover:text-brand-600 font-semibold bg-brand-50 dark:bg-brand-500/10 px-2.5 py-1 rounded-md border border-brand-200 dark:border-brand-500/30"
+          >
+            {showQuickAdd ? "Cancel Quick Add" : "+ Create New Stock Item"}
+          </button>
+          <button
+            type="button"
+            onClick={onAdd}
+            className="text-sm text-brand-500 hover:text-brand-600 font-medium"
+          >
+            + Add Ingredient
+          </button>
+        </div>
       </div>
+
+      {showQuickAdd && (
+        <div className="mb-4 p-3 bg-brand-50/50 dark:bg-brand-500/5 rounded-xl border border-brand-200 dark:border-brand-500/20 space-y-2">
+          <p className="text-xs font-bold text-brand-700 dark:text-brand-300">Quick Create Inventory Ingredient</p>
+          <div className="grid grid-cols-1 sm:grid-cols-4 gap-2">
+            <input
+              type="text"
+              placeholder="Ingredient Name (e.g. Cheese)"
+              value={quickName}
+              onChange={(e) => setQuickName(e.target.value)}
+              className="sm:col-span-2 rounded border border-gray-300 px-3 py-1.5 text-xs text-gray-800 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            />
+            <input
+              type="number"
+              placeholder="Stock Qty"
+              value={quickQty}
+              onChange={(e) => setQuickQty(e.target.value)}
+              className="rounded border border-gray-300 px-3 py-1.5 text-xs text-gray-800 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            />
+            <select
+              value={quickUnit}
+              onChange={(e) => setQuickUnit(e.target.value)}
+              className="rounded border border-gray-300 px-2 py-1.5 text-xs text-gray-800 dark:bg-gray-800 dark:border-gray-700 dark:text-white"
+            >
+              <option value="kg">kg</option>
+              <option value="g">gram</option>
+              <option value="bottles">bottles</option>
+              <option value="pcs">pcs</option>
+              <option value="L">L</option>
+              <option value="ml">ml</option>
+            </select>
+          </div>
+          <div className="flex justify-end">
+            <button
+              type="button"
+              onClick={handleQuickCreate}
+              className="px-3 py-1 bg-brand-500 text-white rounded text-xs font-bold hover:bg-brand-600"
+            >
+              Save & Add to Dish
+            </button>
+          </div>
+        </div>
+      )}
 
       {ingredients.map((ing, index) => (
         <div key={index} className="flex gap-4 items-center mb-2">
@@ -108,7 +186,7 @@ function useCategoryColour(categories: string[]) {
 }
 
 export default function Menu() {
-  const { menu, inventory, addMenuItem, updateMenuItem, deleteMenuItem, setMenuItemAvailability } = useKitchen();
+  const { menu, inventory, addMenuItem, updateMenuItem, deleteMenuItem, setMenuItemAvailability, addInventoryItem } = useKitchen();
 
   // ── add-form state ──────────────────────────────────────────────────────────
   const [showAddForm, setShowAddForm] = useState(false);
@@ -349,6 +427,7 @@ export default function Menu() {
                 onAdd={handleAddIngredient}
                 onUpdate={handleUpdateIngredient}
                 onRemove={handleRemoveIngredient}
+                addInventoryItem={addInventoryItem}
               />
 
               <div className="flex justify-end pt-4">

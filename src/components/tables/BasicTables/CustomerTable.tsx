@@ -7,9 +7,10 @@ import {
   TableRow,
 } from "../../ui/table";
 import { useKitchen } from "../../../context/KitchenContext";
+import { TableRowSkeleton } from "../../ui/skeleton/Skeleton";
 
 export default function CustomerTable() {
-  const { orders } = useKitchen();
+  const { orders, loading } = useKitchen();
 
   const customers = useMemo(() => {
     const map = new Map<string, any>();
@@ -92,28 +93,33 @@ export default function CustomerTable() {
 
           {/* Table Body */}
           <TableBody className="divide-y divide-gray-100 dark:divide-white/[0.05]">
-            {customers.map((customer, index) => (
-              <TableRow key={index}>
-                <TableCell className="px-5 py-4 text-gray-800 text-start text-theme-sm dark:text-white/90">
-                  {customer.contact}
-                </TableCell>
-                <TableCell className="px-5 py-4 text-gray-800 text-start text-theme-sm dark:text-white/90">
-                  {customer.name}
-                </TableCell>
-                <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
-                  {customer.email}
-                </TableCell>
-                <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
-                  {customer.dob}
-                </TableCell>
-                <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
-                  {customer.orderCount}
-                </TableCell>
-                <TableCell className="px-5 py-4 text-gray-800 text-start text-theme-sm dark:text-white/90 font-medium">
-                  ₹{customer.totalSpent.toFixed(2)}
-                </TableCell>
-              </TableRow>
-            ))}
+            {loading ? (
+              Array.from({ length: 4 }).map((_, idx) => (
+                <TableRowSkeleton key={idx} cols={6} />
+              ))
+            ) : (
+              customers.map((customer, index) => (
+                <TableRow key={index}>
+                  <TableCell className="px-5 py-4 text-gray-800 text-start text-theme-sm dark:text-white/90">
+                    {customer.contact}
+                  </TableCell>
+                  <TableCell className="px-5 py-4 text-gray-800 text-start text-theme-sm dark:text-white/90">
+                    {customer.name}
+                  </TableCell>
+                  <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
+                    {customer.email}
+                  </TableCell>
+                  <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
+                    {customer.dob}
+                  </TableCell>
+                  <TableCell className="px-5 py-4 text-gray-500 text-start text-theme-sm dark:text-gray-400">
+                    {customer.orderCount}
+                  </TableCell>
+                  <TableCell className="px-5 py-4 text-gray-800 text-start text-theme-sm dark:text-white/90 font-medium">
+                    ₹{customer.totalSpent.toFixed(2)}
+                  </TableCell>
+                </TableRow>
+              )))}
 
             {customers.length === 0 && (
               <TableRow>

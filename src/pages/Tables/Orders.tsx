@@ -1,26 +1,24 @@
-import React, { useMemo, useState } from "react";
+import React, { useMemo } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import OrdersTable from "../../components/tables/BasicTables/OrdersTable";
 import { useKitchen } from "../../context/KitchenContext";
+import { useOrderDraft } from "../../context/OrderDraftContext";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { getBestSellingIds } from "../../utils/helpers";
 
 export default function Orders() {
   const { menu, orders, addOrder } = useKitchen();
-
-  // ── customer fields ──────────────────────────────────────────────────────────
-  const [contact, setContact] = useState("");
-  const [customerName, setCustomerName] = useState("");
-  const [email, setEmail] = useState("");
-  const [dob, setDob] = useState<Date | null>(null);
-  const [discount, setDiscount] = useState(0);
-
-  // ── cart (menuItemId → quantity) ─────────────────────────────────────────────
-  const [cart, setCart] = useState<Record<string, number>>({});
-
-  // ── category tab ─────────────────────────────────────────────────────────────
-  const [activeCategory, setActiveCategory] = useState<string>("Best Selling");
+  const {
+    contact, setContact,
+    customerName, setCustomerName,
+    email, setEmail,
+    dob, setDob,
+    discount, setDiscount,
+    cart, setCart,
+    activeCategory, setActiveCategory,
+    clearDraft,
+  } = useOrderDraft();
 
   const availableMenu = menu.filter((m) => m.isAvailable);
 
@@ -109,11 +107,10 @@ export default function Orders() {
       discount,
       contact,
       email,
-      dob ? dob.toISOString().split("T")[0] : ""
+      dob ? dob.toISOString().split("T")[0] : undefined
     );
 
-    setContact(""); setCustomerName(""); setEmail(""); setDob(null);
-    setDiscount(0); setCart({});
+    clearDraft();
   };
 
   return (

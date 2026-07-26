@@ -56,8 +56,8 @@ plans: {
   // Organizations types
   organizationTypes: [
     "Kitchen",
-    "Sports Academy",
-    "Salon",
+    "Academy",
+    "Salon"
   ],
 
   // Menu categories

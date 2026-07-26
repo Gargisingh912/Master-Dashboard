@@ -5,12 +5,11 @@ import Backdrop from "./Backdrop";
 import AppSidebar from "./AppSidebar";
 import TrialBanner from "../layout/TrialBanner";
 import { useAuth } from "../hooks/useAuth";
+import ErrorBoundary from "../components/common/ErrorBoundary";
 
 const LayoutContent: React.FC = () => {
   const { isExpanded, isHovered, isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
   const { plan, trialEnds } = useAuth();
-
-  console.log("TRIAL DEBUG:", { plan, trialEnds }); // temporary — remove once confirmed working
 
   return (
     <div className="min-h-screen xl:flex">
@@ -26,7 +25,9 @@ const LayoutContent: React.FC = () => {
         <AppHeader onClick={toggleSidebar} onToggle={toggleMobileSidebar} />
         <TrialBanner plan={plan} trialEnds={trialEnds} />
         <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
-          <Outlet />
+          <ErrorBoundary>
+            <Outlet />
+          </ErrorBoundary>
         </div>
       </div>
     </div>
