@@ -180,54 +180,66 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
  * Play notification sound using Web Audio API
  * Loud, 5-second repeating alarm designed for busy kitchens
  */
-export const playNotificationSound = () => {
-  try {
-    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-    const now = ctx.currentTime;
+let alarmInterval: any = null;
+let activeAudioCtx: AudioContext | null = null;
 
-    // 3 rapid bursts, repeated 3 times over ~5 seconds
-    const burstPattern = [
-      // Round 1
-      { freq: 880, start: 0.0, dur: 0.15 },   // A5
-      { freq: 1100, start: 0.18, dur: 0.15 },  // C#6
-      { freq: 880, start: 0.36, dur: 0.15 },   // A5
-      // Pause
-      // Round 2
-      { freq: 880, start: 1.2, dur: 0.15 },
-      { freq: 1100, start: 1.38, dur: 0.15 },
-      { freq: 880, start: 1.56, dur: 0.15 },
-      // Pause
-      // Round 3
-      { freq: 880, start: 2.4, dur: 0.15 },
-      { freq: 1100, start: 2.58, dur: 0.15 },
-      { freq: 880, start: 2.76, dur: 0.15 },
-      // Pause
-      // Round 4 — higher urgency
-      { freq: 1100, start: 3.6, dur: 0.12 },
-      { freq: 1320, start: 3.75, dur: 0.12 },
-      { freq: 1100, start: 3.9, dur: 0.12 },
-      { freq: 1320, start: 4.05, dur: 0.12 },
-      { freq: 1100, start: 4.2, dur: 0.12 },
-      { freq: 1320, start: 4.35, dur: 0.3 },
-    ];
+export const startContinuousAlarm = () => {
+  if (alarmInterval) return; // already running
 
-    burstPattern.forEach(({ freq, start, dur }) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.type = "square"; // harsher, cuts through kitchen noise
-      osc.frequency.value = freq;
-      gain.gain.setValueAtTime(0.8, now + start); // loud
-      gain.gain.exponentialRampToValueAtTime(0.01, now + start + dur);
-      osc.start(now + start);
-      osc.stop(now + start + dur);
-    });
+  const playBurst = () => {
+    try {
+      if (!activeAudioCtx || activeAudioCtx.state === "closed") {
+        activeAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      }
+      if (activeAudioCtx.state === "suspended") {
+        activeAudioCtx.resume();
+      }
+      const ctx = activeAudioCtx;
+      const now = ctx.currentTime;
 
-    setTimeout(() => ctx.close(), 6000);
-  } catch {
-    // Ignore — AudioContext not available
+      const burstPattern = [
+        { freq: 987.77, start: 0.0, dur: 0.18 }, // B5
+        { freq: 1318.51, start: 0.2, dur: 0.22 }, // E6
+        { freq: 987.77, start: 0.45, dur: 0.18 }, // B5
+        { freq: 1318.51, start: 0.65, dur: 0.35 }, // E6
+      ];
+
+      burstPattern.forEach(({ freq, start, dur }) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = "square"; // loud piercing waveform for kitchens
+        osc.frequency.value = freq;
+        gain.gain.setValueAtTime(0.9, now + start);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + start + dur);
+        osc.start(now + start);
+        osc.stop(now + start + dur);
+      });
+    } catch (e) {
+      console.warn("Audio alarm playback error:", e);
+    }
+  };
+
+  playBurst();
+  alarmInterval = setInterval(playBurst, 1500);
+};
+
+export const stopContinuousAlarm = () => {
+  if (alarmInterval) {
+    clearInterval(alarmInterval);
+    alarmInterval = null;
   }
+  if (activeAudioCtx && activeAudioCtx.state !== "closed") {
+    activeAudioCtx.close().catch(() => {});
+    activeAudioCtx = null;
+  }
+};
+
+export const playNotificationSound = () => {
+  startContinuousAlarm();
+  // Auto stop after 10 sec if not manually stopped
+  setTimeout(stopContinuousAlarm, 10000);
 };
 
 /**

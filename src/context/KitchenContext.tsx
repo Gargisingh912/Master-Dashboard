@@ -21,6 +21,7 @@ export interface MenuItem {
   name: string;
   price: number;
   category?: string;
+  image_url?: string;
   ingredients: MenuIngredient[];
   isAvailable: boolean;
 }
@@ -44,6 +45,7 @@ export interface Order {
   total: number;
   status: string;
   date: string;
+  notes?: string;
 }
 
 export interface Expense {
@@ -64,7 +66,7 @@ interface KitchenContextType {
   updateInventoryItem: (id: string, updates: { name?: string; unit?: string; category?: string; quantity?: number }) => Promise<void>;
   deleteInventoryItem: (id: string) => Promise<void>;
   addMenuItem: (item: Omit<MenuItem, "id" | "isAvailable">) => Promise<void>;
-  addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => Promise<void>;
+  addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string, notes?: string) => Promise<void>;
   updateOrder: (id: string, updates: { customer_name?: string; total?: number; discount?: number; items?: OrderItem[] }) => Promise<void>;
   addExpense: (expense: Omit<Expense, "id" | "date">) => Promise<void>;
   updateExpense: (id: string, updates: Omit<Expense, "id" | "date">) => Promise<void>;
@@ -166,6 +168,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         name: item.name,
         price: item.price,
         category: item.category ?? undefined,
+        image_url: item.image_url ?? undefined,
         isAvailable: item.is_available,
         ingredients: (item.menu_ingredients || []).map((ing: any) => ({
           inventoryId: ing.inventory_item_id,
@@ -199,6 +202,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         total: o.total,
         status: o.status,
         date: o.created_at,
+        notes: o.notes || o.cooking_request,
       }));
       setOrders(fetchedOrders);
 
@@ -357,6 +361,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       name: item.name,
       price: item.price,
       category: item.category || null,
+      image_url: item.image_url || null,
       is_available: true,
     }).select().single();
 
@@ -384,16 +389,16 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
-    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true, category: item.category }]);
+    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true, category: item.category, image_url: item.image_url }]);
   };
 
   const updateMenuItem = async (
     id: string,
-    updates: { name: string; price: number; category?: string; ingredients: MenuIngredient[] }
+    updates: { name: string; price: number; category?: string; image_url?: string; ingredients: MenuIngredient[] }
   ) => {
     const { error: updateError } = await supabase
       .from('menu_items')
-      .update({ name: updates.name, price: updates.price, category: updates.category || null })
+      .update({ name: updates.name, price: updates.price, category: updates.category || null, image_url: updates.image_url || null })
       .eq('id', id);
 
     if (updateError) {
@@ -477,7 +482,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     );
   };
 
-  const addOrder = async (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string) => {
+  const addOrder = async (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string, notes?: string) => {
     if (!orgId) {
       setError("No organization context — please log in again.");
       return;
@@ -499,8 +504,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const total = subtotal - (subtotal * discount) / 100;
 
-
-
     const { data: orderData, error: orderError } = await supabase.from('orders').insert({
       organization_id: orgId,
       customer_name: customerName,
@@ -510,6 +513,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       discount,
       total,
       status: 'Placed',
+      notes: notes && notes.trim() !== "" ? notes.trim() : null,
     }).select().single();
 
     if (orderError) {
@@ -539,6 +543,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         total,
         status: "Placed",
         date: orderData.created_at || new Date().toISOString(),
+        notes: notes?.trim(),
       },
       ...prev,
     ]);

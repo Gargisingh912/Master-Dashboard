@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import {
   Table,
   TableBody,
@@ -11,6 +11,8 @@ import { TableRowSkeleton } from "../../ui/skeleton/Skeleton";
 
 export default function CustomerTable() {
   const { orders, loading } = useKitchen();
+
+
 
   const customers = useMemo(() => {
     const map = new Map<string, any>();
@@ -47,6 +49,10 @@ export default function CustomerTable() {
 
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
+      <div className="p-4 border-b border-gray-100 dark:border-white/[0.05] flex justify-between items-center">
+        <h3 className="font-bold text-gray-800 dark:text-white/90 text-lg">Customer Directory</h3>
+      </div>
+
       <div className="max-w-full overflow-x-auto">
         <Table>
           {/* Table Header */}

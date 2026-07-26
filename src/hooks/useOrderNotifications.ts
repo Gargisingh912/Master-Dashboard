@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { supabase } from "../config/supabase";
-import { playNotificationSound } from "../utils/helpers";
+import { playNotificationSound, startContinuousAlarm, stopContinuousAlarm } from "../utils/helpers";
 
 export interface PendingOrder {
   id: string;
@@ -185,6 +185,14 @@ export function useOrderNotifications(organizationId: string | null) {
     setPendingOrders((prev) => prev.filter((o) => o.id !== orderId));
     return true;
   }, []);
+
+  useEffect(() => {
+    if (pendingOrders.length > 0) {
+      startContinuousAlarm();
+    } else {
+      stopContinuousAlarm();
+    }
+  }, [pendingOrders.length]);
 
   useEffect(() => {
     const interval = setInterval(() => {

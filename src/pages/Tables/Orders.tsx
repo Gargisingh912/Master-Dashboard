@@ -14,6 +14,7 @@ export default function Orders() {
     customerName, setCustomerName,
     email, setEmail,
     dob, setDob,
+    notes, setNotes,
     discount, setDiscount,
     cart, setCart,
     activeCategory, setActiveCategory,
@@ -30,7 +31,7 @@ export default function Orders() {
   const categories = useMemo(() => {
     const cats = new Set<string>();
     availableMenu.forEach((m) => { if (m.category) cats.add(m.category); });
-    return Array.from(cats).sort();
+    return Array.from(cats);
   }, [availableMenu]);
 
   const grouped = useMemo(() => {
@@ -107,7 +108,8 @@ export default function Orders() {
       discount,
       contact,
       email,
-      dob ? dob.toISOString().split("T")[0] : undefined
+      dob ? dob.toISOString().split("T")[0] : undefined,
+      notes
     );
 
     clearDraft();
@@ -156,6 +158,16 @@ export default function Orders() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                   required
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Cooking Requests / Notes</label>
+                <textarea
+                  value={notes}
+                  onChange={(e) => setNotes(e.target.value)}
+                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  rows={2}
+                  placeholder="e.g. Extra spicy, no onions, allergy notes..."
                 />
               </div>
               <div>
@@ -240,8 +252,17 @@ export default function Orders() {
                         </span>
                       )}
 
-                      <p className="font-semibold text-gray-800 dark:text-white/90 text-sm leading-snug pr-8">{item.name}</p>
-                      <p className="text-brand-500 font-medium text-sm mt-0.5">₹{item.price}</p>
+                      <div className="flex gap-3 items-start">
+                        {item.image_url && (
+                          <div className="w-12 h-12 shrink-0 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
+                            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+                          </div>
+                        )}
+                        <div>
+                          <p className="font-semibold text-gray-800 dark:text-white/90 text-sm leading-snug pr-8">{item.name}</p>
+                          <p className="text-brand-500 font-medium text-sm mt-0.5">₹{item.price}</p>
+                        </div>
+                      </div>
 
                       <div className="mt-3 flex items-center justify-between">
                         {qty > 0 ? (

@@ -9,6 +9,8 @@ interface OrderDraftContextType {
   setEmail: (val: string) => void;
   dob: Date | null;
   setDob: (val: Date | null) => void;
+  notes: string;
+  setNotes: (val: string) => void;
   discount: number;
   setDiscount: (val: number) => void;
   cart: Record<string, number>;
@@ -60,6 +62,15 @@ export const OrderDraftProvider: React.FC<{ children: ReactNode }> = ({ children
     }
   });
 
+  const [notes, setNotes] = useState<string>(() => {
+    try {
+      const saved = sessionStorage.getItem(STORAGE_KEY);
+      return saved ? JSON.parse(saved).notes || "" : "";
+    } catch {
+      return "";
+    }
+  });
+
   const [discount, setDiscount] = useState<number>(() => {
     try {
       const saved = sessionStorage.getItem(STORAGE_KEY);
@@ -97,6 +108,7 @@ export const OrderDraftProvider: React.FC<{ children: ReactNode }> = ({ children
           customerName,
           email,
           dob: dob ? dob.toISOString() : null,
+          notes,
           discount,
           cart,
           activeCategory,
@@ -105,13 +117,14 @@ export const OrderDraftProvider: React.FC<{ children: ReactNode }> = ({ children
     } catch (e) {
       console.error("Failed to save order draft:", e);
     }
-  }, [contact, customerName, email, dob, discount, cart, activeCategory]);
+  }, [contact, customerName, email, dob, notes, discount, cart, activeCategory]);
 
   const clearDraft = () => {
     setContact("");
     setCustomerName("");
     setEmail("");
     setDob(null);
+    setNotes("");
     setDiscount(0);
     setCart({});
     setActiveCategory("Best Selling");
@@ -131,6 +144,8 @@ export const OrderDraftProvider: React.FC<{ children: ReactNode }> = ({ children
         setEmail,
         dob,
         setDob,
+        notes,
+        setNotes,
         discount,
         setDiscount,
         cart,

@@ -10,7 +10,7 @@ import {
 
 import { useState, useRef } from "react";
 import { useKitchen } from "../../../context/KitchenContext";
-import { Edit, Check, X, FileText, Printer } from "lucide-react";
+import { Edit, Check, X, FileText, Printer, MessageCircle } from "lucide-react";
 import { TableRowSkeleton } from "../../ui/skeleton/Skeleton";
 
 const playAcceptSound = () => {
@@ -82,7 +82,7 @@ export default function OrdersTable() {
   };
   return (
     <div className="overflow-hidden rounded-xl border border-gray-200 bg-white dark:border-white/[0.05] dark:bg-white/[0.03]">
-      <div className="max-w-full overflow-x-auto">
+      <div className="max-w-full overflow-x-auto max-h-[380px] overflow-y-auto">
         <Table>
   {/* Table Header */}
   <TableHeader className="border-b border-gray-100 dark:border-white/[0.05]">
@@ -203,24 +203,15 @@ export default function OrdersTable() {
 
         {/* Status */}
         <TableCell className="px-4 py-3 text-gray-500 text-start text-theme-sm dark:text-gray-400">
-          <select
-  value={order.status}
-  onChange={(e) => handleStatusChange(order, e.target.value)}
-  disabled={order.status === "Delivered"}
-  className={`rounded-full px-3 py-1 text-xs font-medium border-0 focus:ring-2 focus:ring-brand-500 ${
-    order.status === "Delivered" ? "cursor-not-allowed opacity-75" : "cursor-pointer"
-  } ${
-    order.status === "Delivered"
-      ? "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400"
-      : order.status === "Preparing"
-      ? "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400"
-      : "bg-gray-100 text-gray-700 dark:bg-white/5 dark:text-white/80"
-  }`}
->
-            <option value="Placed" className="text-gray-800 bg-white">Placed</option>
-            <option value="Preparing" className="text-gray-800 bg-white">Preparing</option>
-            <option value="Delivered" className="text-gray-800 bg-white">Delivered</option>
-          </select>
+          <span className={`inline-flex rounded-full px-3 py-1 text-xs font-medium ${
+            order.status === "Delivered" ? "bg-success-50 text-success-700 dark:bg-success-500/10 dark:text-success-400" :
+            order.status === "Ready" ? "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400" :
+            order.status === "Preparing" ? "bg-warning-50 text-warning-700 dark:bg-warning-500/10 dark:text-warning-400" :
+            (order.status === "Cancelled" || order.status === "Declined") ? "bg-error-50 text-error-700 dark:bg-error-500/10 dark:text-error-400" :
+            "bg-gray-100 text-gray-700 dark:bg-white/5 dark:text-white/80"
+          }`}>
+            {order.status}
+          </span>
         </TableCell>
         
         {/* Actions */}
@@ -235,15 +226,49 @@ export default function OrdersTable() {
               </button>
             </div>
           ) : (
-            <div className="flex justify-end gap-2">
-              {(order.status === "Preparing" || order.status === "Delivered") && (
-                <button onClick={() => setInvoiceOrder(order)} className="text-gray-500 hover:text-gray-700" title="View Invoice">
+            <div className="flex justify-end gap-2 items-center">
+              {order.status === "Placed" && (
+                <button onClick={() => handleStatusChange(order, "Preparing")} className="px-3 py-1 bg-brand-500 text-white rounded-lg text-xs font-semibold hover:bg-brand-600 transition-colors">
+                  Accept
+                </button>
+              )}
+              {order.status === "Preparing" && (
+                <button onClick={() => handleStatusChange(order, "Ready")} className="px-3 py-1 bg-blue-500 text-white rounded-lg text-xs font-semibold hover:bg-blue-600 transition-colors">
+                  Mark Ready
+                </button>
+              )}
+              {order.status === "Ready" && (
+                <button onClick={() => handleStatusChange(order, "Delivered")} className="px-3 py-1 bg-success-500 text-white rounded-lg text-xs font-semibold hover:bg-success-600 transition-colors">
+                  Deliver
+                </button>
+              )}
+              {(order.status === "Placed" || order.status === "Preparing") && (
+                <button onClick={() => handleStatusChange(order, "Cancelled")} className="px-3 py-1 bg-error-50 text-error-600 rounded-lg text-xs font-semibold hover:bg-error-100 transition-colors">
+                  Cancel
+                </button>
+              )}
+
+              {(order.status === "Preparing" || order.status === "Ready" || order.status === "Delivered") && (
+                <button onClick={() => setInvoiceOrder(order)} className="text-gray-500 hover:text-gray-700 ml-2" title="View Invoice">
                   <FileText size={18} />
                 </button>
               )}
-              <button onClick={() => handleEditClick(order)} className="text-blue-500 hover:text-blue-700" title="Edit Order">
-                <Edit size={18} />
-              </button>
+              {order.status === "Delivered" && order.customer.contact && (
+                <a 
+                  href={`https://wa.me/91${order.customer.contact}?text=${encodeURIComponent(`Hi ${order.customer.name}! Thank you for ordering from us. We hope you enjoyed your meal! Could you please take a moment to leave us your feedback? It helps us serve you better. Have a great day!`)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-green-500 hover:text-green-700 ml-1" 
+                  title="Request Feedback via WhatsApp"
+                >
+                  <MessageCircle size={18} />
+                </a>
+              )}
+              {order.status !== "Delivered" && order.status !== "Cancelled" && order.status !== "Declined" && (
+                <button onClick={() => handleEditClick(order)} className="text-blue-500 hover:text-blue-700 ml-1" title="Edit Order">
+                  <Edit size={18} />
+                </button>
+              )}
             </div>
           )}
         </TableCell>

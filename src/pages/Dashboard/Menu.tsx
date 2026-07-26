@@ -22,13 +22,13 @@ function IngredientEditor({
   onAdd: () => void;
   onUpdate: (index: number, field: string, value: string) => void;
   onRemove: (index: number) => void;
-  addInventoryItem: (item: { name: string; quantity: number; unit: string; category?: string }) => Promise<string | undefined>;
+  addInventoryItem: (item: { name: string; quantity: number; unit: string; category: string }) => Promise<string | undefined>;
 }) {
   const [showQuickAdd, setShowQuickAdd] = useState(false);
   const [quickName, setQuickName] = useState("");
   const [quickUnit, setQuickUnit] = useState("kg");
   const [quickQty, setQuickQty] = useState("10");
-  const [quickCategory, setQuickCategory] = useState("Raw Material");
+  const [quickCategory] = useState("Raw Material");
 
   const handleQuickCreate = async () => {
     if (!quickName.trim()) return;
@@ -193,6 +193,7 @@ export default function Menu() {
   const [newDishName, setNewDishName] = useState("");
   const [newDishPrice, setNewDishPrice] = useState("");
   const [newDishCategory, setNewDishCategory] = useState("");
+  const [newDishImageUrl, setNewDishImageUrl] = useState("");
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
 
   // ── edit state ──────────────────────────────────────────────────────────────
@@ -200,6 +201,7 @@ export default function Menu() {
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editCategory, setEditCategory] = useState("");
+  const [editImageUrl, setEditImageUrl] = useState("");
   const [editIngredients, setEditIngredients] = useState<IngredientRow[]>([]);
 
   // ── filter state ────────────────────────────────────────────────────────────
@@ -213,7 +215,7 @@ export default function Menu() {
   const existingCategories = useMemo(() => {
     const cats = new Set<string>();
     menu.forEach((m) => { if (m.category) cats.add(m.category); });
-    return Array.from(cats).sort();
+    return Array.from(cats);
   }, [menu]);
 
   const filterTabs = ["All", ...existingCategories];
@@ -280,12 +282,14 @@ export default function Menu() {
       name: newDishName,
       price: parseFloat(newDishPrice),
       category: newDishCategory.trim() || undefined,
+      image_url: newDishImageUrl.trim() || undefined,
       ingredients,
     });
 
     setNewDishName("");
     setNewDishPrice("");
     setNewDishCategory("");
+    setNewDishImageUrl("");
     setIngredients([]);
     setShowAddForm(false);
   };
@@ -296,6 +300,7 @@ export default function Menu() {
     setEditName(item.name);
     setEditPrice(String(item.price));
     setEditCategory(item.category ?? "");
+    setEditImageUrl(item.image_url ?? "");
     setEditIngredients(item.ingredients.map((ing) => ({ ...ing })));
   };
 
@@ -304,6 +309,7 @@ export default function Menu() {
     setEditName("");
     setEditPrice("");
     setEditCategory("");
+    setEditImageUrl("");
     setEditIngredients([]);
   };
 
@@ -332,6 +338,7 @@ export default function Menu() {
       name: editName,
       price: parseFloat(editPrice),
       category: editCategory.trim() || undefined,
+      image_url: editImageUrl.trim() || undefined,
       ingredients: editIngredients,
     });
 
@@ -397,7 +404,7 @@ export default function Menu() {
           <div className="rounded-xl border border-gray-200 bg-white p-6 dark:border-white/[0.05] dark:bg-white/[0.03]">
             <h3 className="text-lg font-medium text-gray-800 dark:text-white/90 mb-4">Add New Dish</h3>
             <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Name</label>
                   <input
@@ -419,6 +426,16 @@ export default function Menu() {
                   />
                 </div>
                 <CategoryInput value={newDishCategory} onChange={setNewDishCategory} />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Image URL</label>
+                  <input
+                    type="url"
+                    value={newDishImageUrl}
+                    onChange={(e) => setNewDishImageUrl(e.target.value)}
+                    placeholder="https://..."
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  />
+                </div>
               </div>
 
               <IngredientEditor
@@ -450,8 +467,8 @@ export default function Menu() {
                 key={tab}
                 onClick={() => setActiveFilter(tab)}
                 className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${activeFilter === tab
-                    ? "bg-brand-500 text-white"
-                    : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/[0.05] dark:text-gray-400 dark:hover:bg-white/[0.08]"
+                  ? "bg-brand-500 text-white"
+                  : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/[0.05] dark:text-gray-400 dark:hover:bg-white/[0.08]"
                   }`}
               >
                 {tab}
@@ -470,7 +487,7 @@ export default function Menu() {
               <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-6 dark:border-white/[0.05] dark:bg-white/[0.03]">
                 {isEditing ? (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 gap-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Name</label>
                         <input
@@ -502,6 +519,16 @@ export default function Menu() {
                           className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                         />
                       </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Image URL</label>
+                        <input
+                          type="url"
+                          value={editImageUrl}
+                          onChange={(e) => setEditImageUrl(e.target.value)}
+                          placeholder="https://..."
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                        />
+                      </div>
                     </div>
 
                     <IngredientEditor
@@ -510,6 +537,7 @@ export default function Menu() {
                       onAdd={handleEditAddIngredient}
                       onUpdate={handleEditUpdateIngredient}
                       onRemove={handleEditRemoveIngredient}
+                      addInventoryItem={addInventoryItem}
                     />
 
                     <div className="flex justify-end gap-2 pt-2">
@@ -529,6 +557,11 @@ export default function Menu() {
                   </div>
                 ) : (
                   <>
+                    {item.image_url && (
+                      <div className="h-32 w-full mb-4 overflow-hidden rounded-lg bg-gray-100">
+                        <img src={item.image_url} alt={item.name} className="h-full w-full object-cover" />
+                      </div>
+                    )}
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex-1 min-w-0 pr-3">
                         <h3 className={`text-lg font-semibold truncate ${!makeable ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-white/90"}`}>

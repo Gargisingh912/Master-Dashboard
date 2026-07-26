@@ -10,6 +10,7 @@ interface MenuItem {
   name: string;
   price: number;
   category?: string;
+  image_url?: string;
 }
 
 interface CartLine {
@@ -35,6 +36,7 @@ const OrderPage: React.FC = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [address, setAddress] = useState("");
+  const [notes, setNotes] = useState("");
   const [dob, setDob] = useState<Date | null>(null);
   const [lookupDone, setLookupDone] = useState(false);
 
@@ -159,6 +161,7 @@ const OrderPage: React.FC = () => {
         name: item.name,
         price: item.price,
         category: item.category ?? undefined,
+        image_url: item.image_url ?? undefined,
       })));
       setLoading(false);
     };
@@ -175,7 +178,7 @@ const OrderPage: React.FC = () => {
 
   const userCategories = Array.from(
     new Set(menuItems.map((m) => m.category).filter((c): c is string => !!c))
-  ).sort();
+  );
 
   // Tab list: "Best Selling" first (if any), then user categories
   const tabs: string[] = [
@@ -288,7 +291,7 @@ const OrderPage: React.FC = () => {
       if (editingOrderId) {
         const { data: order, error: orderError } = await supabasePublic
           .from("orders")
-          .update({ total, status: "Placed", created_at: new Date().toISOString() })
+          .update({ total, status: "Placed", created_at: new Date().toISOString(), cooking_request: notes.trim() || null })
           .eq("id", editingOrderId)
           .select("id, order_id, created_at")
           .single();
@@ -309,6 +312,7 @@ const OrderPage: React.FC = () => {
               customer_contact: contact.trim(),
               customer_email: email.trim() || null,
               customer_dob: dob ? dob.toISOString().split("T")[0] : null,
+              cooking_request: notes.trim() || null,
               discount: 0,
               total,
               status: "Placed",
@@ -517,6 +521,13 @@ const OrderPage: React.FC = () => {
                   showMonthDropdown showYearDropdown dropdownMode="select"
                 />
               </div>
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Cooking Requests (e.g. Extra spicy, allergy notes...)"
+                className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden"
+                rows={2}
+              />
             </div>
           )}
         </div>
@@ -582,11 +593,18 @@ function MenuItemCard({
 }) {
   return (
     <div className="flex justify-between items-center bg-white border border-gray-200 rounded-xl p-4 shadow-theme-xs transition-transform hover:scale-[1.01]">
-      <div>
-        <p className="font-semibold text-gray-800">{item.name}</p>
-        <p className="text-sm font-medium text-brand-500 mt-1">₹{item.price.toFixed(2)}</p>
+      <div className="flex items-center gap-4">
+        {item.image_url && (
+          <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-gray-100">
+            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+          </div>
+        )}
+        <div>
+          <p className="font-semibold text-gray-800">{item.name}</p>
+          <p className="text-sm font-medium text-brand-500 mt-1">₹{item.price.toFixed(2)}</p>
+        </div>
       </div>
-      <div className="flex items-center gap-3 bg-gray-50 rounded-full p-1 border border-gray-100">
+      <div className="flex items-center gap-3 bg-gray-50 rounded-full p-1 border border-gray-100 shrink-0">
         {cart[item.id] ? (
           <>
             <button onClick={() => onRemove(item.id)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-gray-600 shadow-xs hover:bg-gray-50 transition-colors">−</button>
