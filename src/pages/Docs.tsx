@@ -1,109 +1,184 @@
 import PageMeta from "../components/common/PageMeta";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
+import {
+  LayoutDashboard,
+  UtensilsCrossed,
+  ChefHat,
+  Banknote,
+  QrCode,
+  Users,
+  ArrowRight,
+  PlusCircle,
+  ImagePlus,
+  BellRing
+} from "lucide-react";
 
 export default function Docs() {
   return (
     <>
       <PageMeta
-        title="Documentation | Dashboard"
-        description="User Instruction Manual for Master Dashboard."
+        title="Walkthrough & Docs | Dashboard"
+        description="Complete walkthrough of your Master Dashboard."
       />
-      <PageBreadcrumb pageTitle="Documentation" />
+      <PageBreadcrumb pageTitle="System Walkthrough" />
 
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] lg:p-10">
-        <div className="mb-8">
-          <h2 className="text-2xl font-bold text-gray-800 dark:text-white mb-2">Welcome to Your Dashboard!</h2>
-          <p className="text-gray-500 dark:text-gray-400">
-            This quick instruction manual will help you navigate and make the most out of your restaurant management system.
-          </p>
+      <div className="mx-auto max-w-5xl space-y-8">
+
+        {/* Welcome Banner */}
+        <div className="relative overflow-hidden rounded-2xl bg-brand-500 p-8 text-white shadow-theme-lg">
+          <div className="relative z-10 max-w-2xl">
+            <h1 className="text-3xl font-bold mb-4">Welcome to Your Master Dashboard</h1>
+            <p className="text-brand-100 text-lg leading-relaxed">
+              This system is designed to automate your restaurant operations—from digital QR ordering to live kitchen management and automated inventory tracking. Follow this walkthrough to master your dashboard in minutes.
+            </p>
+          </div>
+          <ChefHat className="absolute -bottom-10 -right-10 h-64 w-64 text-brand-600 opacity-50" />
         </div>
 
-        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {/* Dashboard Module */}
-          <div className="flex flex-col rounded-xl bg-gray-50 p-6 dark:bg-white/[0.02] border border-gray-100 dark:border-gray-800 hover:shadow-sm transition-shadow">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z" />
-              </svg>
-            </div>
-            <h3 className="mb-2 text-lg font-semibold text-gray-800 dark:text-white">Dashboard</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Get an instant overview of your restaurant's performance. View today's sales, active orders, and quickly jump to different modules.
-            </p>
-          </div>
+        {/* Walkthrough Steps */}
+        <div className="grid gap-8">
 
-          {/* Menu Module */}
-          <div className="flex flex-col rounded-xl bg-gray-50 p-6 dark:bg-white/[0.02] border border-gray-100 dark:border-gray-800 hover:shadow-sm transition-shadow">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-              </svg>
+          {/* STEP 1: Overview */}
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03] lg:p-8">
+            <div className="flex items-start gap-5">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-500 dark:bg-blue-500/10">
+                <LayoutDashboard size={28} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">1. The Overview Dashboard</h2>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                  When you log in, you land on the Overview Dashboard. This is your command center for daily operations.
+                </p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/50">
+                    <h4 className="font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-2">
+                      <BellRing size={16} className="text-warning-500" /> Live Order Status
+                    </h4>
+                    <p className="text-sm text-gray-500">Track Placed, Preparing, and Delivered orders in real-time. This is constantly updating.</p>
+                  </div>
+                  <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-800/50">
+                    <h4 className="font-semibold text-gray-800 dark:text-white flex items-center gap-2 mb-2">
+                      <ArrowRight size={16} className="text-success-500" /> Inventory Alerts
+                    </h4>
+                    <p className="text-sm text-gray-500">Instantly see if any ingredients are running critically low based on your menu items.</p>
+                  </div>
+                </div>
+              </div>
             </div>
-            <h3 className="mb-2 text-lg font-semibold text-gray-800 dark:text-white">Menu & Items</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Manage your digital menu. Add new items, update prices, and upload mouth-watering photos. Changes instantly sync with your QR menus.
-            </p>
-          </div>
+          </section>
 
-          {/* Orders Module */}
-          <div className="flex flex-col rounded-xl bg-gray-50 p-6 dark:bg-white/[0.02] border border-gray-100 dark:border-gray-800 hover:shadow-sm transition-shadow">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
-              </svg>
+          {/* STEP 2: Menu & Inventory */}
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03] lg:p-8">
+            <div className="flex items-start gap-5">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-orange-50 text-orange-500 dark:bg-orange-500/10">
+                <UtensilsCrossed size={28} />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">2. Setting Up Your Menu & Inventory</h2>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                  Go to the <strong>Menu Management</strong> tab to add your dishes. Our system links dishes directly to your raw inventory so stock deducts automatically!
+                </p>
+
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-orange-50/50 dark:bg-orange-500/5 border border-orange-100 dark:border-orange-500/10">
+                    <PlusCircle className="text-orange-500 mt-1" size={20} />
+                    <div>
+                      <h4 className="font-semibold text-gray-800 dark:text-white mb-1">Step A: Add Raw Ingredients (Inventory)</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Before adding a dish, add ingredients (e.g., Flour, Cheese) in the Inventory tab. This allows the system to warn you when you run out!</p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 p-4 rounded-xl bg-orange-50/50 dark:bg-orange-500/5 border border-orange-100 dark:border-orange-500/10">
+                    <ImagePlus className="text-orange-500 mt-1" size={20} />
+                    <div>
+                      <h4 className="font-semibold text-gray-800 dark:text-white mb-1">Step B: Create a Dish & Upload an Image</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Click "+ Add New Dish". Enter the price, select the ingredients it uses, and <strong>upload a beautiful picture</strong> from your computer/phone. This picture automatically shows up on your QR Menu!</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <h3 className="mb-2 text-lg font-semibold text-gray-800 dark:text-white">Live Orders</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Track incoming customer orders in real-time. Change order statuses (Preparing, Ready, Served) to keep the kitchen and customers in sync.
-            </p>
-          </div>
+          </section>
 
-          {/* Finance Module */}
-          <div className="flex flex-col rounded-xl bg-gray-50 p-6 dark:bg-white/[0.02] border border-gray-100 dark:border-gray-800 hover:shadow-sm transition-shadow">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
+          {/* STEP 3: QR Codes */}
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03] lg:p-8">
+            <div className="flex items-start gap-5">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-500 dark:bg-purple-500/10">
+                <QrCode size={28} />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">3. Generating QR Codes</h2>
+                <p className="text-gray-600 dark:text-gray-400 mb-4">
+                  Go to the <strong>QR Code</strong> tab. You can generate a unique QR code for every single table in your restaurant.
+                </p>
+                <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-5 border border-gray-100 dark:border-gray-800 text-sm text-gray-600 dark:text-gray-300">
+                  <ul className="list-disc pl-5 space-y-2">
+                    <li>Print these codes and stick them on your tables.</li>
+                    <li>Customers scan them using their phone camera (no app needed!).</li>
+                    <li>They will see your digital menu (with the pictures you uploaded) and can place orders directly to the kitchen.</li>
+                  </ul>
+                </div>
+              </div>
             </div>
-            <h3 className="mb-2 text-lg font-semibold text-gray-800 dark:text-white">Finance</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Keep an eye on the bottom line. Review your revenue history, manage recorded expenses, and check out top-selling items to optimize your menu.
-            </p>
-          </div>
+          </section>
 
-          {/* QR Code Module */}
-          <div className="flex flex-col rounded-xl bg-gray-50 p-6 dark:bg-white/[0.02] border border-gray-100 dark:border-gray-800 hover:shadow-sm transition-shadow">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
-              </svg>
+          {/* STEP 4: Live Kitchen Orders */}
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03] lg:p-8">
+            <div className="flex items-start gap-5">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-500 dark:bg-red-500/10">
+                <ChefHat size={28} />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">4. Live Kitchen Orders</h2>
+                <p className="text-gray-600 dark:text-gray-400 mb-6">
+                  When a customer places an order via the QR code, it instantly pops up in your <strong>Orders</strong> tab with a loud alert tone!
+                </p>
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="bg-white border border-gray-200 dark:border-gray-700 dark:bg-gray-800 rounded-xl p-4 shadow-xs text-center">
+                    <span className="inline-block px-3 py-1 bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200 rounded-full text-xs font-bold mb-2">1. PLACED</span>
+                    <p className="text-xs text-gray-500">Order arrives. Click <strong>Accept</strong> to send it to the kitchen and print the invoice.</p>
+                  </div>
+                  <div className="bg-white border border-gray-200 dark:border-gray-700 dark:bg-gray-800 rounded-xl p-4 shadow-xs text-center">
+                    <span className="inline-block px-3 py-1 bg-warning-100 text-warning-700 dark:bg-warning-500/20 dark:text-warning-400 rounded-full text-xs font-bold mb-2">2. PREPARING</span>
+                    <p className="text-xs text-gray-500">Food is being cooked. Click <strong>Mark Ready</strong> when it is done.</p>
+                  </div>
+                  <div className="bg-white border border-gray-200 dark:border-gray-700 dark:bg-gray-800 rounded-xl p-4 shadow-xs text-center">
+                    <span className="inline-block px-3 py-1 bg-success-100 text-success-700 dark:bg-success-500/20 dark:text-success-400 rounded-full text-xs font-bold mb-2">3. READY</span>
+                    <p className="text-xs text-gray-500">Waiter takes it to the table. Click <strong>Deliver</strong> to close the order.</p>
+                  </div>
+                </div>
+              </div>
             </div>
-            <h3 className="mb-2 text-lg font-semibold text-gray-800 dark:text-white">QR Code</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Download and print custom QR codes for your tables. Customers simply scan the code with their phones to view your menu and place orders instantly.
-            </p>
-          </div>
+          </section>
 
-          {/* Settings Module */}
-          <div className="flex flex-col rounded-xl bg-gray-50 p-6 dark:bg-white/[0.02] border border-gray-100 dark:border-gray-800 hover:shadow-sm transition-shadow">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-brand-500/10 text-brand-500">
-              <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-              </svg>
+          {/* STEP 5: Customers & Finance */}
+          <section className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03] lg:p-8">
+            <div className="flex items-start gap-5">
+              <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-green-50 text-green-500 dark:bg-green-500/10">
+                <Banknote size={28} />
+              </div>
+              <div className="flex-1">
+                <h2 className="text-xl font-bold text-gray-800 dark:text-white mb-2">5. Customers & Finance</h2>
+                <div className="space-y-4">
+                  <div className="flex items-start gap-3">
+                    <Users className="text-gray-400 mt-1" size={20} />
+                    <div>
+                      <h4 className="font-semibold text-gray-800 dark:text-white">Customer Database</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">Go to the Customers tab to see a history of everyone who has ordered. <em>(Note: You can clean up anonymous QR scans using the "Clean Up QR Auth Users" button in the corner).</em></p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3">
+                    <Banknote className="text-gray-400 mt-1" size={20} />
+                    <div>
+                      <h4 className="font-semibold text-gray-800 dark:text-white">Finance & Expenses</h4>
+                      <p className="text-sm text-gray-600 dark:text-gray-400">In the Finance tab, log your daily expenses (rent, electricity, salaries) to see your true net profit calculated automatically against your sales.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            <h3 className="mb-2 text-lg font-semibold text-gray-800 dark:text-white">Team & Settings</h3>
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Invite staff members to your dashboard. Control permissions so everyone only sees what they need to manage operations smoothly.
-            </p>
-          </div>
-        </div>
+          </section>
 
-        <div className="mt-8 rounded-xl bg-brand-50 p-6 dark:bg-brand-500/10 border border-brand-100 dark:border-brand-500/20">
-          <h3 className="mb-3 text-lg font-semibold text-brand-600 dark:text-brand-400">Getting Help</h3>
-          <p className="text-sm text-gray-600 dark:text-gray-300">
-            If you ever get stuck or need additional assistance, check out our full support portal or utilize the "Talk to your Data!!" assistant to get immediate context on your performance.
-          </p>
         </div>
       </div>
     </>
