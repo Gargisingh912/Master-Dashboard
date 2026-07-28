@@ -202,7 +202,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         total: o.total,
         status: o.status,
         date: o.created_at,
-        notes: o.notes || o.cooking_request,
+        notes: o.notes 
       }));
       setOrders(fetchedOrders);
 

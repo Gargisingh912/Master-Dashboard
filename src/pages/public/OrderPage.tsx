@@ -291,7 +291,7 @@ const OrderPage: React.FC = () => {
       if (editingOrderId) {
         const { data: order, error: orderError } = await supabasePublic
           .from("orders")
-          .update({ total, status: "Placed", created_at: new Date().toISOString(), cooking_request: notes.trim() || null })
+          .update({ total, status: "Placed", created_at: new Date().toISOString(), notes: notes.trim() || null })
           .eq("id", editingOrderId)
           .select("id, order_id, created_at")
           .single();
@@ -312,7 +312,7 @@ const OrderPage: React.FC = () => {
               customer_contact: contact.trim(),
               customer_email: email.trim() || null,
               customer_dob: dob ? dob.toISOString().split("T")[0] : null,
-              cooking_request: notes.trim() || null,
+              notes: notes.trim() || null,
               discount: 0,
               total,
               status: "Placed",
