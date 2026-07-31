@@ -195,6 +195,7 @@ export default function Menu() {
   const [newDishPrice, setNewDishPrice] = useState("");
   const [newDishCategory, setNewDishCategory] = useState("");
   const [newDishImageUrl, setNewDishImageUrl] = useState("");
+  const [newDishDietType, setNewDishDietType] = useState<'veg' | 'nonveg' | 'vegan' | ''>("");
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
 
   // ── edit state ──────────────────────────────────────────────────────────────
@@ -203,6 +204,7 @@ export default function Menu() {
   const [editPrice, setEditPrice] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
+  const [editDietType, setEditDietType] = useState<'veg' | 'nonveg' | 'vegan' | ''>("");
   const [editIngredients, setEditIngredients] = useState<IngredientRow[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
@@ -318,6 +320,7 @@ export default function Menu() {
       price: parseFloat(newDishPrice),
       category: newDishCategory.trim() || undefined,
       image_url: newDishImageUrl.trim() || undefined,
+      diet_type: newDishDietType || undefined,
       ingredients,
     });
 
@@ -325,6 +328,7 @@ export default function Menu() {
     setNewDishPrice("");
     setNewDishCategory("");
     setNewDishImageUrl("");
+    setNewDishDietType("");
     setIngredients([]);
     setShowAddForm(false);
   };
@@ -336,6 +340,7 @@ export default function Menu() {
     setEditPrice(String(item.price));
     setEditCategory(item.category ?? "");
     setEditImageUrl(item.image_url ?? "");
+    setEditDietType((item.diet_type as any) ?? "");
     setEditIngredients(item.ingredients.map((ing) => ({ ...ing })));
   };
 
@@ -345,6 +350,7 @@ export default function Menu() {
     setEditPrice("");
     setEditCategory("");
     setEditImageUrl("");
+    setEditDietType("");
     setEditIngredients([]);
   };
 
@@ -374,6 +380,7 @@ export default function Menu() {
       price: parseFloat(editPrice),
       category: editCategory.trim() || undefined,
       image_url: editImageUrl.trim() || undefined,
+      diet_type: editDietType || undefined,
       ingredients: editIngredients,
     });
 
@@ -461,6 +468,19 @@ export default function Menu() {
                   />
                 </div>
                 <CategoryInput value={newDishCategory} onChange={setNewDishCategory} />
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Diet Type</label>
+                  <select
+                    value={newDishDietType}
+                    onChange={(e) => setNewDishDietType(e.target.value as any)}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  >
+                    <option value="">Not specified</option>
+                    <option value="veg">🟢 Veg</option>
+                    <option value="nonveg">🔴 Non-Veg</option>
+                    <option value="vegan">🟣 Vegan</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Image</label>
                   <div className="flex items-center gap-3">
@@ -608,9 +628,14 @@ export default function Menu() {
                     )}
                     <div className="flex justify-between items-start mb-3">
                       <div className="flex-1 min-w-0 pr-3">
-                        <h3 className={`text-lg font-semibold truncate ${!makeable ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-white/90"}`}>
-                          {item.name}
-                        </h3>
+                        <div className="flex items-center gap-2 mb-1">
+                          {item.diet_type === 'veg' && <span className="inline-block w-3 h-3 rounded-full bg-green-500 ring-1 ring-green-300 shrink-0" title="Veg" />}
+                          {item.diet_type === 'nonveg' && <span className="inline-block w-3 h-3 rounded-full bg-red-500 ring-1 ring-red-300 shrink-0" title="Non-Veg" />}
+                          {item.diet_type === 'vegan' && <span className="inline-block w-3 h-3 rounded-full bg-purple-500 ring-1 ring-purple-300 shrink-0" title="Vegan" />}
+                          <h3 className={`text-lg font-semibold truncate ${!makeable ? "text-red-600 dark:text-red-400" : "text-gray-800 dark:text-white/90"}`}>
+                            {item.name}
+                          </h3>
+                        </div>
                         <span className="font-medium text-brand-500">₹{item.price}</span>
                       </div>
 

@@ -22,6 +22,7 @@ export interface MenuItem {
   price: number;
   category?: string;
   image_url?: string;
+  diet_type?: 'veg' | 'nonveg' | 'vegan';
   ingredients: MenuIngredient[];
   isAvailable: boolean;
 }
@@ -56,27 +57,43 @@ export interface Expense {
   date: string;
 }
 
+export interface DiscountCoupon {
+  id: string;
+  code: string;
+  discount_percent: number;
+  max_uses: number | null;
+  used_count: number;
+  valid_from: string;
+  valid_to: string | null;
+  is_active: boolean;
+  created_at: string;
+}
+
 interface KitchenContextType {
   inventory: InventoryItem[];
   menu: MenuItem[];
   orders: Order[];
   expenses: Expense[];
+  coupons: DiscountCoupon[];
   addInventoryItem: (item: Omit<InventoryItem, "id">) => Promise<string | undefined>;
   updateInventoryQuantity: (id: string, quantity: number) => Promise<void>;
   updateInventoryItem: (id: string, updates: { name?: string; unit?: string; category?: string; quantity?: number }) => Promise<void>;
   deleteInventoryItem: (id: string) => Promise<void>;
   addMenuItem: (item: Omit<MenuItem, "id" | "isAvailable">) => Promise<void>;
-  addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string, notes?: string) => Promise<void>;
+  addOrder: (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string, notes?: string, couponCode?: string, couponDiscount?: number) => Promise<void>;
   updateOrder: (id: string, updates: { customer_name?: string; total?: number; discount?: number; items?: OrderItem[] }) => Promise<void>;
   addExpense: (expense: Omit<Expense, "id" | "date">) => Promise<void>;
   updateExpense: (id: string, updates: Omit<Expense, "id" | "date">) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   monthlyGoal: number;
-  updateMenuItem: (id: string, updates: { name: string; price: number; category?: string; image_url?: string; ingredients: MenuIngredient[] }) => Promise<void>;
+  updateMenuItem: (id: string, updates: { name: string; price: number; category?: string; image_url?: string; diet_type?: 'veg' | 'nonveg' | 'vegan'; ingredients: MenuIngredient[] }) => Promise<void>;
   deleteMenuItem: (id: string) => Promise<void>;
   setMenuItemAvailability: (id: string, isAvailable: boolean) => Promise<void>;
   setMonthlyGoal: (goal: number) => void;
   updateOrderStatus: (id: string, status: string) => Promise<void>;
+  addCoupon: (coupon: Omit<DiscountCoupon, "id" | "used_count" | "created_at">) => Promise<void>;
+  updateCoupon: (id: string, updates: Partial<Omit<DiscountCoupon, "id" | "created_at">>) => Promise<void>;
+  deleteCoupon: (id: string) => Promise<void>;
   loading: boolean;
   error: string | null;
 }
@@ -89,6 +106,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [menu, setMenu] = useState<MenuItem[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
+  const [coupons, setCoupons] = useState<DiscountCoupon[]>([]);
   const [monthlyGoal, setMonthlyGoal] = useState<number>(20000);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
@@ -169,6 +187,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         price: item.price,
         category: item.category ?? undefined,
         image_url: item.image_url ?? undefined,
+        diet_type: item.diet_type ?? undefined,
         isAvailable: item.is_available,
         ingredients: (item.menu_ingredients || []).map((ing: any) => ({
           inventoryId: ing.inventory_item_id,
@@ -220,6 +239,26 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         date: e.date || e.created_at,
       }));
       setExpenses(fetchedExpenses);
+
+      // Fetch coupons
+      const { data: couponsData, error: couponsError } = await supabase
+        .from('discount_coupons')
+        .select('*')
+        .eq('organization_id', currentOrgId)
+        .order('created_at', { ascending: false });
+      if (couponsError) console.error("Coupons fetch error:", couponsError);
+      const fetchedCoupons: DiscountCoupon[] = (couponsData || []).map((c: any) => ({
+        id: c.id,
+        code: c.code,
+        discount_percent: c.discount_percent,
+        max_uses: c.max_uses,
+        used_count: c.used_count,
+        valid_from: c.valid_from,
+        valid_to: c.valid_to,
+        is_active: c.is_active,
+        created_at: c.created_at,
+      }));
+      setCoupons(fetchedCoupons);
     } catch (err: any) {
       setError(err.message || "Failed to fetch data");
     } finally {
@@ -244,6 +283,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchInitialData(user.id, true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchInitialData(user.id, true))
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => fetchInitialData(user.id, true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'discount_coupons' }, () => fetchInitialData(user.id, true))
       .subscribe();
 
     return () => {
@@ -362,6 +402,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       price: item.price,
       category: item.category || null,
       image_url: item.image_url || null,
+      diet_type: item.diet_type || null,
       is_available: true,
     }).select().single();
 
@@ -389,16 +430,16 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
-    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true, category: item.category, image_url: item.image_url }]);
+    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true, category: item.category, image_url: item.image_url, diet_type: item.diet_type }]);
   };
 
   const updateMenuItem = async (
     id: string,
-    updates: { name: string; price: number; category?: string; image_url?: string; ingredients: MenuIngredient[] }
+    updates: { name: string; price: number; category?: string; image_url?: string; diet_type?: 'veg' | 'nonveg' | 'vegan'; ingredients: MenuIngredient[] }
   ) => {
     const { error: updateError } = await supabase
       .from('menu_items')
-      .update({ name: updates.name, price: updates.price, category: updates.category || null, image_url: updates.image_url || null })
+      .update({ name: updates.name, price: updates.price, category: updates.category || null, image_url: updates.image_url || null, diet_type: updates.diet_type || null })
       .eq('id', id);
 
     if (updateError) {
@@ -444,7 +485,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     setMenu(prev =>
       prev.map(m =>
         m.id === id
-          ? { ...m, name: updates.name, price: updates.price, category: updates.category, ingredients: updates.ingredients }
+          ? { ...m, name: updates.name, price: updates.price, category: updates.category, diet_type: updates.diet_type, ingredients: updates.ingredients }
           : m
       )
     );
@@ -482,7 +523,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     );
   };
 
-  const addOrder = async (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string, notes?: string) => {
+  const addOrder = async (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string, notes?: string, couponCode?: string, couponDiscount?: number) => {
     if (!orgId) {
       setError("No organization context — please log in again.");
       return;
@@ -514,6 +555,8 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       total,
       status: 'Placed',
       notes: notes && notes.trim() !== "" ? notes.trim() : null,
+      coupon_code: couponCode || null,
+      coupon_discount: couponDiscount || 0,
     }).select().single();
 
     if (orderError) {
@@ -701,6 +744,40 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     setExpenses(prev => prev.filter(e => e.id !== id));
   };
 
+  const addCoupon = async (coupon: Omit<DiscountCoupon, "id" | "used_count" | "created_at">) => {
+    if (!orgId) { setError("No organization context."); return; }
+    const { data, error } = await supabase.from('discount_coupons').insert({
+      organization_id: orgId,
+      code: coupon.code.toUpperCase().trim(),
+      discount_percent: coupon.discount_percent,
+      max_uses: coupon.max_uses ?? null,
+      valid_from: coupon.valid_from,
+      valid_to: coupon.valid_to ?? null,
+      is_active: coupon.is_active,
+    }).select().single();
+    if (error) { console.error(error); setError(error.message); return; }
+    setCoupons(prev => [{ ...coupon, id: data.id, used_count: 0, created_at: data.created_at }, ...prev]);
+  };
+
+  const updateCoupon = async (id: string, updates: Partial<Omit<DiscountCoupon, "id" | "created_at">>) => {
+    const payload: Record<string, any> = {};
+    if (updates.code !== undefined) payload.code = updates.code.toUpperCase().trim();
+    if (updates.discount_percent !== undefined) payload.discount_percent = updates.discount_percent;
+    if (updates.max_uses !== undefined) payload.max_uses = updates.max_uses;
+    if (updates.valid_from !== undefined) payload.valid_from = updates.valid_from;
+    if (updates.valid_to !== undefined) payload.valid_to = updates.valid_to;
+    if (updates.is_active !== undefined) payload.is_active = updates.is_active;
+    const { error } = await supabase.from('discount_coupons').update(payload).eq('id', id);
+    if (error) { console.error(error); setError(error.message); return; }
+    setCoupons(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c));
+  };
+
+  const deleteCoupon = async (id: string) => {
+    const { error } = await supabase.from('discount_coupons').delete().eq('id', id);
+    if (error) { console.error(error); setError(error.message); return; }
+    setCoupons(prev => prev.filter(c => c.id !== id));
+  };
+
   return (
     <KitchenContext.Provider
       value={{
@@ -708,6 +785,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         menu,
         orders,
         expenses,
+        coupons,
         addInventoryItem,
         updateInventoryQuantity,
         updateInventoryItem,
@@ -724,6 +802,9 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         setMonthlyGoal,
         updateOrderStatus,
         setMenuItemAvailability,
+        addCoupon,
+        updateCoupon,
+        deleteCoupon,
         loading,
         error,
       }}

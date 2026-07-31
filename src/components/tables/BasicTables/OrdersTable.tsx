@@ -109,6 +109,12 @@ export default function OrdersTable() {
         isHeader
         className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
       >
+        Notes
+      </TableCell>
+      <TableCell
+        isHeader
+        className="px-5 py-3 font-medium text-gray-500 text-start text-theme-xs dark:text-gray-400"
+      >
         Total
       </TableCell>
       <TableCell
@@ -189,6 +195,17 @@ export default function OrdersTable() {
               const menuItem = menu.find(m => m.id === item.menuItemId);
               return menuItem ? `${menuItem.name} (x${item.quantity})` : `Unknown Item (x${item.quantity})`;
             }).join(", ")
+          )}
+        </TableCell>
+
+        {/* Notes */}
+        <TableCell className="px-4 py-3 text-gray-500 text-start text-theme-sm dark:text-gray-400 max-w-[160px]">
+          {order.notes ? (
+            <span className="block text-xs text-gray-600 dark:text-gray-400 italic truncate" title={order.notes}>
+              {order.notes}
+            </span>
+          ) : (
+            <span className="text-gray-300 dark:text-gray-600">—</span>
           )}
         </TableCell>
 
@@ -303,6 +320,13 @@ export default function OrdersTable() {
                 {invoiceOrder.customer.contact && <p>{invoiceOrder.customer.contact}</p>}
                 {invoiceOrder.customer.email && <p>{invoiceOrder.customer.email}</p>}
               </div>
+
+              {invoiceOrder.notes && (
+                <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/10 rounded-lg border border-amber-200 dark:border-amber-800">
+                  <p className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider mb-1">Cooking Requests / Notes</p>
+                  <p className="text-sm text-amber-800 dark:text-amber-300">{invoiceOrder.notes}</p>
+                </div>
+              )}
               
               <div className="mb-6">
                 <table className="w-full text-sm">

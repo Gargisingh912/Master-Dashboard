@@ -11,9 +11,9 @@ export default function EcommerceMetrics() {
   const todayOrders = orders.filter((o) => o.date && o.date.startsWith(todayStr));
   const totalOrders = todayOrders.length;
 
-  const placedCount = orders.filter((o) => o.status === "Placed").length;
-  const preparingCount = orders.filter((o) => o.status === "Preparing" || o.status === "Ready").length;
-  const deliveredCount = orders.filter((o) => o.status === "Delivered").length;
+  const placedCount = todayOrders.filter((o) => o.status === "Placed").length;
+  const preparingCount = todayOrders.filter((o) => o.status === "Preparing" || o.status === "Ready").length;
+  const deliveredCount = todayOrders.filter((o) => o.status === "Delivered").length;
 
   const hasSufficientStock = (item: { ingredients: MenuIngredient[] }) => {
     if (item.ingredients.length === 0) return true;

@@ -24,7 +24,7 @@ import Home from "./pages/Dashboard/Home";
 import Menu from "./pages/Dashboard/Menu";
 import Inventory from "./pages/Dashboard/Inventory";
 import Finance from "./pages/Dashboard/Finance";
-import TeamManagement from "./pages/Dashboard/TeamManagement";
+import DiscountCoupons from "./pages/Dashboard/DiscountCoupons";
 import LandingPage from "./pages/public/LandingPage";
 import RegisterPage from "./pages/public/RegisterPage";
 import LoginPage from "./pages/public/LoginPage";
@@ -62,7 +62,7 @@ export default function App() {
             <Route path="/qr-code" element={<QRCodePage />} />
             <Route path="/inventory" element={<Inventory />} />
             <Route path="/finance" element={<Finance />} />
-            <Route path="/team" element={<TeamManagement />} />
+            <Route path="/coupons" element={<DiscountCoupons />} />
 
             {/* Others Page */}
             <Route path="/profile" element={<UserProfiles />} />

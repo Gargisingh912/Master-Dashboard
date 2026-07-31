@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router";
 import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { useOrderNotifications } from "../../hooks/useOrderNotifications";
@@ -38,9 +39,15 @@ interface NotificationDropdownProps {
 
 export default function NotificationDropdown({ organizationId }: NotificationDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
   const { pendingOrders, missedOrders, acceptOrder, declineOrder } = useOrderNotifications(organizationId);
 
   function toggleDropdown() {
+    // Feature 1: If there are pending orders, navigate directly to the orders page
+    if (pendingOrders.length > 0) {
+      navigate("/orders-tables");
+      return;
+    }
     setIsOpen((prev) => !prev);
   }
 
@@ -59,6 +66,7 @@ export default function NotificationDropdown({ organizationId }: NotificationDro
       <button
         className="relative flex items-center justify-center text-gray-500 transition-colors bg-white border border-gray-200 rounded-full dropdown-toggle hover:text-gray-700 h-11 w-11 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
         onClick={toggleDropdown}
+        title={notifying ? `${pendingOrders.length} order(s) pending — click to go to Orders tab` : "Notifications"}
       >
         <span
           className={`absolute right-0 top-0.5 z-10 h-2 w-2 rounded-full bg-orange-400 ${!notifying ? "hidden" : "flex"
@@ -86,6 +94,8 @@ export default function NotificationDropdown({ organizationId }: NotificationDro
           />
         </svg>
       </button>
+
+      {/* Dropdown is shown only for missed/declined orders when no pending orders */}
       <Dropdown
         isOpen={isOpen}
         onClose={closeDropdown}
@@ -93,7 +103,7 @@ export default function NotificationDropdown({ organizationId }: NotificationDro
       >
         <div className="flex items-center justify-between pb-3 mb-3 border-b border-gray-100 dark:border-gray-700">
           <h5 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-            New Orders {pendingOrders.length > 0 && `(${pendingOrders.length})`}
+            Notifications
           </h5>
           <button
             onClick={toggleDropdown}

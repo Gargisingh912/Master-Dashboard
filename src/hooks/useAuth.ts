@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../config/supabase";
+import { setupPushNotifications } from "../utils/pushNotifications";
+
 
 interface Organization {
   id: string;
@@ -79,6 +81,9 @@ export function useAuth() {
       if (session?.user) {
         setUser(session.user);
         await fetchProfile(session.user.id);
+        // Register/refresh this device's push token on every session load,
+        // not just first login — covers page refreshes, new tabs, etc.
+        setupPushNotifications(session.user.id);
       }
       setLoading(false);
     }
@@ -90,6 +95,8 @@ export function useAuth() {
         if (session?.user) {
           setUser(session.user);
           await fetchProfile(session.user.id);
+            console.log("ABOUT TO CALL setupPushNotifications");
+          setupPushNotifications(session.user.id);
         } else {
           setUser(null);
           setProfile(null);

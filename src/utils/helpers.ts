@@ -182,11 +182,63 @@ export const copyToClipboard = async (text: string): Promise<boolean> => {
  */
 let alarmInterval: any = null;
 let activeAudioCtx: AudioContext | null = null;
+let vibrationInterval: any = null;
+let _silentMode = false;
+
+/**
+ * Silent mode: mutes audio alarm but keeps vibration going
+ */
+export const isSilentMode = (): boolean => _silentMode;
+
+export const setSilentMode = (silent: boolean) => {
+  _silentMode = silent;
+  if (silent) {
+    // Stop audio but keep vibration
+    if (alarmInterval) {
+      clearInterval(alarmInterval);
+      alarmInterval = null;
+    }
+    if (activeAudioCtx && activeAudioCtx.state !== "closed") {
+      activeAudioCtx.close().catch(() => {});
+      activeAudioCtx = null;
+    }
+  }
+};
+
+/**
+ * Start vibration pattern (for mobile devices)
+ */
+export const startVibration = () => {
+  if (vibrationInterval) return;
+  const vibrate = () => {
+    if (navigator.vibrate) {
+      navigator.vibrate([200, 100, 200, 100, 200]);
+    }
+  };
+  vibrate();
+  vibrationInterval = setInterval(vibrate, 1500);
+};
+
+export const stopVibration = () => {
+  if (vibrationInterval) {
+    clearInterval(vibrationInterval);
+    vibrationInterval = null;
+  }
+  if (navigator.vibrate) {
+    navigator.vibrate(0); // cancel any ongoing vibration
+  }
+};
 
 export const startContinuousAlarm = () => {
+  // Always start vibration
+  startVibration();
+
+  // Skip audio if silent mode
+  if (_silentMode) return;
   if (alarmInterval) return; // already running
 
   const playBurst = () => {
+    if (_silentMode) return; // recheck in case toggled mid-alarm
     try {
       if (!activeAudioCtx || activeAudioCtx.state === "closed") {
         activeAudioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -234,12 +286,13 @@ export const stopContinuousAlarm = () => {
     activeAudioCtx.close().catch(() => {});
     activeAudioCtx = null;
   }
+  stopVibration();
 };
 
 export const playNotificationSound = () => {
   startContinuousAlarm();
-  // Auto stop after 10 sec if not manually stopped
-  setTimeout(stopContinuousAlarm, 10000);
+  // Auto stop after 5 minutes if not manually stopped
+  setTimeout(stopContinuousAlarm, 300000);
 };
 
 /**

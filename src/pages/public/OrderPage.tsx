@@ -11,6 +11,7 @@ interface MenuItem {
   price: number;
   category?: string;
   image_url?: string;
+  diet_type?: 'veg' | 'nonveg' | 'vegan';
 }
 
 interface CartLine {
@@ -19,8 +20,6 @@ interface CartLine {
   price: number;
   quantity: number;
 }
-
-// Best selling = top 5 by qty sold in last 30 days — matches "Highest Selling Dishes" KPI
 
 const OrderPage: React.FC = () => {
   const { organizationId } = useParams<{ organizationId: string }>();
@@ -31,6 +30,8 @@ const OrderPage: React.FC = () => {
   const [authReady, setAuthReady] = useState(false);
 
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  // Feature 9: diet filter
+  const [dietFilter, setDietFilter] = useState<'all' | 'veg' | 'nonveg' | 'vegan'>('all');
 
   const [contact, setContact] = useState("");
   const [name, setName] = useState("");
@@ -38,7 +39,18 @@ const OrderPage: React.FC = () => {
   const [address, setAddress] = useState("");
   const [notes, setNotes] = useState("");
   const [dob, setDob] = useState<Date | null>(null);
-  const [lookupDone, setLookupDone] = useState(false);
+  const [lookupDone, setLookupDone] = useState(true); // Always show fields
+
+  // Feature 12: coupon state
+  const [couponCode, setCouponCode] = useState("");
+  const [couponInput, setCouponInput] = useState("");
+  const [couponDiscount, setCouponDiscount] = useState(0);
+  const [couponError, setCouponError] = useState("");
+  const [couponApplied, setCouponApplied] = useState(false);
+  const [couponId, setCouponId] = useState<string | null>(null);
+
+  // Feature 7: image zoom
+  const [zoomImage, setZoomImage] = useState<string | null>(null);
 
   const [submittedOrder, setSubmittedOrder] = useState<{
     id: string;
@@ -116,23 +128,20 @@ const OrderPage: React.FC = () => {
     setSubmittedOrder(null);
   };
 
-  // ── Fetch menu + recent orders for best-selling computation ──────────────────
+  // ── Fetch menu ────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!organizationId) return;
     const actualOrgId = base62ToUuid(organizationId);
 
     const fetchData = async () => {
-      // 1. Fetch available menu items
       const { data: items, error: menuErr } = await supabasePublic
         .from("menu_items")
-        .select("id, name, price, category, image_url")
+        .select("id, name, price, category, image_url, diet_type")
         .eq("organization_id", actualOrgId)
         .eq("is_available", true);
 
       if (menuErr) console.error("Failed to load menu:", menuErr);
 
-      // 2. Fetch orders from the last 30 days (same window as the
-      //    "Highest Selling Dishes" KPI on the dashboard Overview)
       const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
       const { data: recentOrders, error: ordersErr } = await supabasePublic
         .from("orders")
@@ -142,7 +151,6 @@ const OrderPage: React.FC = () => {
 
       if (ordersErr) console.error("Failed to load recent orders:", ordersErr);
 
-      // 3. Aggregate per menu item — top 5 by quantity (no minimum)
       const counts: Record<string, number> = {};
       (recentOrders || []).forEach((o: any) => {
         (o.order_items || []).forEach((oi: any) => {
@@ -162,6 +170,7 @@ const OrderPage: React.FC = () => {
         price: item.price,
         category: item.category ?? undefined,
         image_url: item.image_url ?? undefined,
+        diet_type: item.diet_type ?? undefined,
       })));
       setLoading(false);
     };
@@ -169,29 +178,24 @@ const OrderPage: React.FC = () => {
     fetchData();
   }, [organizationId]);
 
-  // ── Derived category data ────────────────────────────────────────────────────
   const [bestSellingIds, setBestSellingIds] = useState<string[]>([]);
 
   const bestSellingItems = menuItems.filter((m) => bestSellingIds.includes(m.id));
-  // Sort by the order they appear in bestSellingIds (already sorted by qty desc)
   bestSellingItems.sort((a, b) => bestSellingIds.indexOf(a.id) - bestSellingIds.indexOf(b.id));
 
   const userCategories = Array.from(
     new Set(menuItems.map((m) => m.category).filter((c): c is string => !!c))
   );
 
-  // Tab list: "Best Selling" first (if any), then user categories
   const tabs: string[] = [
     ...(bestSellingItems.length > 0 ? ["Best Selling"] : []),
     ...userCategories,
   ];
 
-  // Ensure activeCategory is valid after data loads
   const resolvedCategory = activeCategory !== null && tabs.includes(activeCategory)
     ? activeCategory
     : tabs[0] ?? null;
 
-  // Group by category (used in "All sections" view when no tab is selected, or if no tabs exist)
   const grouped: Record<string, MenuItem[]> = {};
   menuItems.forEach((m) => {
     const cat = m.category || "Other";
@@ -199,11 +203,17 @@ const OrderPage: React.FC = () => {
     grouped[cat].push(m);
   });
 
-  // Items for the currently active tab
   const getTabItems = (tab: string | null): MenuItem[] => {
-    if (tab === "Best Selling") return bestSellingItems;
-    if (tab) return grouped[tab] || [];
-    return menuItems; // fallback: flat list
+    let items: MenuItem[];
+    if (tab === "Best Selling") items = bestSellingItems;
+    else if (tab) items = grouped[tab] || [];
+    else items = menuItems;
+
+    // Feature 9: apply diet filter
+    if (dietFilter !== 'all') {
+      items = items.filter(m => m.diet_type === dietFilter);
+    }
+    return items;
   };
 
   // ── Contact lookup ───────────────────────────────────────────────────────────
@@ -229,6 +239,41 @@ const OrderPage: React.FC = () => {
     setLookupDone(true);
   };
 
+  // Feature 12: Apply coupon
+  const handleApplyCoupon = async () => {
+    if (!couponInput.trim() || !organizationId) return;
+    setCouponError("");
+    const actualOrgId = base62ToUuid(organizationId);
+
+    const { data, error } = await supabasePublic
+      .from("discount_coupons")
+      .select("id, code, discount_percent, max_uses, used_count, valid_from, valid_to, is_active")
+      .eq("organization_id", actualOrgId)
+      .eq("code", couponInput.trim().toUpperCase())
+      .maybeSingle();
+
+    if (error || !data) { setCouponError("Invalid coupon code."); return; }
+    if (!data.is_active) { setCouponError("This coupon is no longer active."); return; }
+    if (data.max_uses !== null && data.used_count >= data.max_uses) { setCouponError("This coupon has reached its usage limit."); return; }
+    const now = new Date();
+    if (data.valid_from && new Date(data.valid_from) > now) { setCouponError("This coupon is not yet active."); return; }
+    if (data.valid_to && new Date(data.valid_to) < now) { setCouponError("This coupon has expired."); return; }
+
+    setCouponCode(data.code);
+    setCouponDiscount(data.discount_percent);
+    setCouponApplied(true);
+    setCouponId(data.id);
+  };
+
+  const handleRemoveCoupon = () => {
+    setCouponCode("");
+    setCouponInput("");
+    setCouponDiscount(0);
+    setCouponApplied(false);
+    setCouponId(null);
+    setCouponError("");
+  };
+
   // ── Cart helpers ─────────────────────────────────────────────────────────────
   const addToCart = (item: MenuItem) => {
     setCart((prev) => ({
@@ -252,7 +297,9 @@ const OrderPage: React.FC = () => {
   };
 
   const cartLines = Object.values(cart);
-  const total = cartLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
+  const subtotal = cartLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
+  const couponDiscountAmount = couponApplied ? (subtotal * couponDiscount) / 100 : 0;
+  const total = subtotal - couponDiscountAmount;
 
   // ── Submit order ─────────────────────────────────────────────────────────────
   const handleSubmitOrder = async () => {
@@ -275,7 +322,7 @@ const OrderPage: React.FC = () => {
             organization_id: actualOrgId,
             contact_number: contact.trim(),
             name: name.trim(),
-            email: email.trim() || "no-email@provided.com",
+            email: email.trim() || null,
             address: address.trim() || null,
             dob: dob ? dob.toISOString().split("T")[0] : null,
           },
@@ -314,6 +361,8 @@ const OrderPage: React.FC = () => {
               customer_dob: dob ? dob.toISOString().split("T")[0] : null,
               notes: notes.trim() || null,
               discount: 0,
+              coupon_code: couponApplied ? couponCode : null,
+              coupon_discount: couponDiscountAmount,
               total,
               status: "Placed",
             },
@@ -325,6 +374,25 @@ const OrderPage: React.FC = () => {
         orderPk = order.id;
         orderCode = order.order_id;
         orderCreatedAt = order.created_at;
+
+        // Increment coupon used_count
+        if (couponApplied && couponId) {
+          const { error: rpcError } = await supabasePublic.rpc("increment_coupon_usage", { coupon_id: couponId });
+          if (rpcError) {
+            // Fallback: client-side increment
+            const { data: couponData } = await supabasePublic
+              .from("discount_coupons")
+              .select("used_count")
+              .eq("id", couponId)
+              .single();
+            if (couponData) {
+              await supabasePublic
+                .from("discount_coupons")
+                .update({ used_count: (couponData.used_count || 0) + 1 })
+                .eq("id", couponId);
+            }
+          }
+        }
       }
 
       const itemsPayload = cartLines.map((line) => ({
@@ -346,7 +414,7 @@ const OrderPage: React.FC = () => {
     }
   };
 
-  // ── Loading ───────────────────────────────────────────────────────────────────
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-50">
@@ -416,8 +484,14 @@ const OrderPage: React.FC = () => {
           <div className="flex flex-col gap-2 mb-6">
             <div className="flex justify-between text-sm text-gray-600">
               <span>Subtotal:</span>
-              <span>₹{submittedOrder.total.toFixed(2)}</span>
+              <span>₹{subtotal.toFixed(2)}</span>
             </div>
+            {couponApplied && couponDiscountAmount > 0 && (
+              <div className="flex justify-between text-sm text-green-600">
+                <span>Coupon ({couponCode}) – {couponDiscount}% off:</span>
+                <span>−₹{couponDiscountAmount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between text-lg font-bold text-gray-800 pt-2 border-t border-gray-200">
               <span>Total:</span>
               <span>₹{submittedOrder.total.toFixed(2)}</span>
@@ -460,13 +534,51 @@ const OrderPage: React.FC = () => {
   return (
     <div className="max-w-md mx-auto bg-gray-50 min-h-screen">
 
+      {/* Feature 7: Image zoom modal */}
+      {zoomImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setZoomImage(null)}
+        >
+          <div className="relative max-w-full max-h-full" onClick={(e) => e.stopPropagation()}>
+            <img
+              src={zoomImage}
+              alt="Menu item"
+              className="max-w-[90vw] max-h-[85vh] rounded-xl object-contain shadow-2xl"
+              style={{ touchAction: 'pinch-zoom' }}
+            />
+            <button
+              onClick={() => setZoomImage(null)}
+              className="absolute -top-4 -right-4 w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-800 shadow-lg hover:bg-gray-100 font-bold text-lg"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Sticky header with category tabs */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 pt-5 pb-3">
         <h1 className="text-2xl font-bold text-gray-800 mb-1">Order Menu</h1>
 
-        {/* Category tab bar — shown when there are tabs */}
+        {/* Feature 9: Diet filter dropdown */}
+        <div className="flex items-center gap-2 mt-2 mb-1">
+          <span className="text-xs text-gray-500 font-medium">Filter:</span>
+          <select
+            value={dietFilter}
+            onChange={(e) => setDietFilter(e.target.value as any)}
+            className="text-xs font-semibold rounded-full px-3 py-1.5 border border-gray-200 bg-white text-gray-700 focus:border-brand-500 focus:outline-none"
+          >
+            <option value="all">🍽️ All</option>
+            <option value="veg">🟢 Veg Only</option>
+            <option value="nonveg">🔴 Non-Veg Only</option>
+            <option value="vegan">🟣 Vegan Only</option>
+          </select>
+        </div>
+
+        {/* Category tab bar */}
         {tabs.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto mt-3 pb-1 -mx-1 px-1">
+          <div className="flex gap-2 overflow-x-auto mt-2 pb-1 -mx-1 px-1">
             {tabs.map((tab) => (
               <button
                 key={tab}
@@ -508,18 +620,27 @@ const OrderPage: React.FC = () => {
 
           {lookupDone && (
             <div className="mt-4 flex flex-col gap-3">
-              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name" className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden" />
+              <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Full name *" className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden" />
+              {/* Feature 5: email is optional */}
               <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (optional)" className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden" />
               <input value={address} onChange={(e) => setAddress(e.target.value)} placeholder="Address (optional)" className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden" />
-              <div className="relative z-10 w-full">
-                <DatePicker
-                  selected={dob}
-                  onChange={(date: Date | null) => setDob(date)}
-                  dateFormat="yyyy-MM-dd"
-                  placeholderText="Date of Birth"
-                  className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden"
-                  showMonthDropdown showYearDropdown dropdownMode="select"
-                />
+              <div>
+                {/* Feature 6: "for exclusive offers" text */}
+                <label className="block text-xs font-semibold text-gray-600 mb-1">
+                  Date of Birth
+                  <span className="ml-2 text-brand-500 font-normal italic">🎁 for exclusive offers</span>
+                  <span className="ml-1 text-gray-400 font-normal">(optional)</span>
+                </label>
+                <div className="relative z-10 w-full">
+                  <DatePicker
+                    selected={dob}
+                    onChange={(date: Date | null) => setDob(date)}
+                    dateFormat="yyyy-MM-dd"
+                    placeholderText="Date of Birth (optional)"
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden"
+                    showMonthDropdown showYearDropdown dropdownMode="select"
+                  />
+                </div>
               </div>
               <textarea
                 value={notes}
@@ -534,17 +655,15 @@ const OrderPage: React.FC = () => {
 
         {/* ── Menu items ── */}
         {tabs.length === 0 ? (
-          // No categories at all — flat list
           <div className="flex flex-col gap-3">
             {menuItems.map((item) => (
-              <MenuItemCard key={item.id} item={item} cart={cart} onAdd={addToCart} onRemove={removeFromCart} />
+              <MenuItemCard key={item.id} item={item} cart={cart} onAdd={addToCart} onRemove={removeFromCart} onZoom={setZoomImage} />
             ))}
           </div>
         ) : (
-          // Tabs exist — show filtered list for active tab
           <div className="flex flex-col gap-3">
             {currentItems.length > 0 ? currentItems.map((item) => (
-              <MenuItemCard key={item.id} item={item} cart={cart} onAdd={addToCart} onRemove={removeFromCart} />
+              <MenuItemCard key={item.id} item={item} cart={cart} onAdd={addToCart} onRemove={removeFromCart} onZoom={setZoomImage} />
             )) : (
               <p className="text-sm text-gray-400 italic py-4 text-center">No items in this category.</p>
             )}
@@ -554,15 +673,49 @@ const OrderPage: React.FC = () => {
 
       {/* Sticky cart bar */}
       {cartLines.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/90 backdrop-blur-md border-t border-gray-200 z-50">
-          <div className="max-w-md mx-auto">
+        <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 z-50">
+          <div className="max-w-md mx-auto p-4">
+            {/* Feature 12: Coupon code input */}
+            <div className="mb-3">
+              {couponApplied ? (
+                <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-lg px-3 py-2">
+                  <div>
+                    <span className="text-xs font-bold text-green-700">✓ Coupon Applied: {couponCode}</span>
+                    <span className="ml-2 text-xs text-green-600">({couponDiscount}% off — saved ₹{couponDiscountAmount.toFixed(2)})</span>
+                  </div>
+                  <button onClick={handleRemoveCoupon} className="text-xs text-red-500 hover:text-red-700 font-semibold ml-2">Remove</button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    value={couponInput}
+                    onChange={(e) => setCouponInput(e.target.value.toUpperCase())}
+                    placeholder="Have a coupon code?"
+                    className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-none uppercase"
+                  />
+                  <button
+                    onClick={handleApplyCoupon}
+                    className="px-4 py-2 bg-brand-500 text-white text-sm font-semibold rounded-lg hover:bg-brand-600 transition-colors"
+                  >
+                    Apply
+                  </button>
+                </div>
+              )}
+              {couponError && <p className="text-xs text-red-500 mt-1">{couponError}</p>}
+            </div>
+
+            <div className="flex justify-between mb-1 text-sm text-gray-600">
+              <span>Subtotal ({cartLines.reduce((s, l) => s + l.quantity, 0)} items)</span>
+              <span>₹{subtotal.toFixed(2)}</span>
+            </div>
+            {couponApplied && couponDiscountAmount > 0 && (
+              <div className="flex justify-between mb-1 text-sm text-green-600 font-medium">
+                <span>Discount ({couponDiscount}% off)</span>
+                <span>−₹{couponDiscountAmount.toFixed(2)}</span>
+              </div>
+            )}
             <div className="flex justify-between mb-3 font-bold text-gray-800">
-              <span>
-                Total Amount{" "}
-                <span className="text-xs font-normal text-gray-400">
-                  ({cartLines.reduce((s, l) => s + l.quantity, 0)} item{cartLines.reduce((s, l) => s + l.quantity, 0) !== 1 ? "s" : ""})
-                </span>
-              </span>
+              <span>Total Amount</span>
               <span className="text-brand-500">₹{total.toFixed(2)}</span>
             </div>
             <button
@@ -579,29 +732,49 @@ const OrderPage: React.FC = () => {
   );
 };
 
+// Diet type indicator
+const DietDot = ({ type }: { type?: string }) => {
+  if (type === 'veg') return <span className="inline-block w-3 h-3 rounded-sm border-2 border-green-600 flex-shrink-0" style={{ background: 'transparent' }}><span className="block w-1.5 h-1.5 rounded-full bg-green-600 m-auto mt-px" /></span>;
+  if (type === 'nonveg') return <span className="inline-block w-3 h-3 rounded-sm border-2 border-red-600 flex-shrink-0"><span className="block w-1.5 h-1.5 rounded-full bg-red-600 m-auto mt-px" /></span>;
+  if (type === 'vegan') return <span className="inline-block w-3 h-3 rounded-sm border-2 border-purple-600 flex-shrink-0"><span className="block w-1.5 h-1.5 rounded-full bg-purple-600 m-auto mt-px" /></span>;
+  return null;
+};
+
 // ── MenuItemCard ──────────────────────────────────────────────────────────────
 function MenuItemCard({
   item,
   cart,
   onAdd,
   onRemove,
+  onZoom,
 }: {
   item: MenuItem;
   cart: Record<string, CartLine>;
   onAdd: (item: MenuItem) => void;
   onRemove: (id: string) => void;
+  onZoom: (url: string) => void;
 }) {
   return (
     <div className="flex justify-between items-center bg-white border border-gray-200 rounded-xl p-4 shadow-theme-xs transition-transform hover:scale-[1.01]">
       <div className="flex items-center gap-4">
+        {/* Feature 7: clicking image opens zoom modal */}
         {item.image_url && (
-          <div className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-gray-100">
-            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+          <div
+            className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-gray-100 cursor-zoom-in relative group"
+            onClick={() => onZoom(item.image_url!)}
+          >
+            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+            </div>
           </div>
         )}
         <div>
-          <p className="font-semibold text-gray-800">{item.name}</p>
-          <p className="text-sm font-medium text-brand-500 mt-1">₹{item.price.toFixed(2)}</p>
+          <div className="flex items-center gap-1.5 mb-0.5">
+            <DietDot type={item.diet_type} />
+            <p className="font-semibold text-gray-800">{item.name}</p>
+          </div>
+          <p className="text-sm font-medium text-brand-500 mt-0.5">₹{item.price.toFixed(2)}</p>
         </div>
       </div>
       <div className="flex items-center gap-3 bg-gray-50 rounded-full p-1 border border-gray-100 shrink-0">

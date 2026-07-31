@@ -4,6 +4,7 @@ import NotificationDropdown from "../components/header/NotificationDropdown";
 import UserDropdown from "../components/header/UserDropdown";
 import { Link } from "react-router";
 import { supabase } from "../config/supabase";
+import { isSilentMode, setSilentMode } from "../utils/helpers";
 
 interface HeaderProps {
   onClick?: () => void;
@@ -13,6 +14,7 @@ const Header: React.FC<HeaderProps> = ({ onClick, onToggle }) => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
   const [kitchenName, setKitchenName] = useState<string>("");
   const [organizationId, setOrganizationId] = useState<string | null>(null);
+  const [silent, setSilent] = useState(isSilentMode());
 
   useEffect(() => {
     async function fetchKitchenName() {
@@ -154,6 +156,39 @@ const Header: React.FC<HeaderProps> = ({ onClick, onToggle }) => {
             } items-center justify-between w-full gap-4 px-5 py-4 lg:flex shadow-theme-md lg:justify-end lg:px-0 lg:shadow-none`}
         >
           <div className="flex items-center gap-2 2xsm:gap-3">
+            {/* Silent Mode Toggle — mutes audio but keeps vibration */}
+            <button
+              onClick={() => {
+                const next = !silent;
+                setSilentMode(next);
+                setSilent(next);
+              }}
+              title={silent ? "Notifications muted (vibration on) — click to unmute" : "Mute notification sound (vibration stays on)"}
+              className={`relative flex items-center justify-center text-gray-500 transition-colors border rounded-full h-11 w-11 ${
+                silent
+                  ? "bg-red-50 border-red-200 text-red-500 dark:bg-red-900/20 dark:border-red-800 dark:text-red-400"
+                  : "bg-white border-gray-200 hover:text-gray-700 hover:bg-gray-100 dark:border-gray-800 dark:bg-gray-900 dark:text-gray-400 dark:hover:bg-gray-800"
+              }`}
+            >
+              {silent ? (
+                // Bell-slash (muted)
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M13.73 21a2 2 0 0 1-3.46 0"/>
+                  <path d="M18.63 13A17.89 17.89 0 0 1 18 8"/>
+                  <path d="M6.26 6.26A5.86 5.86 0 0 0 6 8c0 7-3 9-3 9h14"/>
+                  <path d="M18 8a6 6 0 0 0-9.33-5"/>
+                  <line x1="1" y1="1" x2="23" y2="23"/>
+                </svg>
+              ) : (
+                // Bell (active)
+                <svg width="20" height="20" viewBox="0 0 20 20" xmlns="http://www.w3.org/2000/svg" fill="currentColor">
+                  <path fillRule="evenodd" clipRule="evenodd" d="M10.75 2.29248C10.75 1.87827 10.4143 1.54248 10 1.54248C9.58583 1.54248 9.25004 1.87827 9.25004 2.29248V2.83613C6.08266 3.20733 3.62504 5.9004 3.62504 9.16748V14.4591H3.33337C2.91916 14.4591 2.58337 14.7949 2.58337 15.2091C2.58337 15.6234 2.91916 15.9591 3.33337 15.9591H4.37504H15.625H16.6667C17.0809 15.9591 17.4167 15.6234 17.4167 15.2091C17.4167 14.7949 17.0809 14.4591 16.6667 14.4591H16.375V9.16748C16.375 5.9004 13.9174 3.20733 10.75 2.83613V2.29248ZM14.875 14.4591V9.16748C14.875 6.47509 12.6924 4.29248 10 4.29248C7.30765 4.29248 5.12504 6.47509 5.12504 9.16748V14.4591H14.875ZM8.00004 17.7085C8.00004 18.1228 8.33583 18.4585 8.75004 18.4585H11.25C11.6643 18.4585 12 18.1228 12 17.7085C12 17.2943 11.6643 16.9585 11.25 16.9585H8.75004C8.33583 16.9585 8.00004 17.2943 8.00004 17.7085Z" />
+                </svg>
+              )}
+              {silent && (
+                <span className="absolute -top-1 -right-1 z-10 flex items-center justify-center w-4 h-4 text-[8px] font-bold text-white bg-red-500 rounded-full">!</span>
+              )}
+            </button>
             <ThemeToggleButton />
             <NotificationDropdown organizationId={organizationId} />
           </div>

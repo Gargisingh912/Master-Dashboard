@@ -63,9 +63,9 @@ const navItems: NavItem[] = [
     path: "/customer-tables",
   },
   {
-    name: "Team",
+    name: "Discount Coupons",
     icon: <UserCircleIcon />,
-    path: "/team",
+    path: "/coupons",
   },
   {
     name: "Talk to your Data!!",
@@ -188,9 +188,9 @@ const AppSidebar: React.FC = () => {
       // Standard plan does not get Talk to your Data
       if (plan === "standard" && nav.name === "Talk to your Data!!") return false;
       // Admin role cannot see Finance, Customers, or Team
-      if (role === "admin" && (nav.name === "Finance" || nav.name === "Customers" || nav.name === "Team")) return false;
-      // Only owner/superadmin can see Team
-      if (nav.name === "Team" && role !== "owner" && role !== "superadmin") return false;
+      if (role === "admin" && (nav.name === "Finance" || nav.name === "Customers" || nav.name === "Discount Coupons")) return false;
+      // Only owner/superadmin can see Discount Coupons
+      if (nav.name === "Discount Coupons" && role !== "owner" && role !== "superadmin") return false;
       return true;
     });
 

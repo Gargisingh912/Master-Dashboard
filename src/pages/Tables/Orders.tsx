@@ -151,13 +151,13 @@ export default function Orders() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Email <span className="text-gray-400 font-normal">(optional)</span></label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-                  required
+                  placeholder="customer@email.com"
                 />
               </div>
               <div className="md:col-span-2">
@@ -171,7 +171,11 @@ export default function Orders() {
                 />
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Date of Birth</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Date of Birth
+                  <span className="ml-2 text-xs font-normal text-brand-500 italic">🎁 for exclusive offers</span>
+                  <span className="ml-1 text-xs font-normal text-gray-400">(optional)</span>
+                </label>
                 <div className="relative z-10 w-full">
                   <DatePicker
                     selected={dob}
