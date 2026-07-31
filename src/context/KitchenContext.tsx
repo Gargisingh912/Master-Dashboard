@@ -267,29 +267,210 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
   };
 
   useEffect(() => {
-    // Wait until session restoration finishes and we have a confirmed user.
-    // Calling fetchInitialData before this resolves is what caused
-    // "AuthSessionMissingError" on page load/refresh — auth.getUser() (or
-    // the profile lookup dependent on it) ran before the session existed.
     if (authLoading || !user) return;
-
     fetchInitialData(user.id);
+  }, [authLoading, user]);
 
-    const channel = supabase
-      .channel('kitchen-updates')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'inventory_items' }, () => fetchInitialData(user.id, true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_items' }, () => fetchInitialData(user.id, true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'menu_ingredients' }, () => fetchInitialData(user.id, true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders' }, () => fetchInitialData(user.id, true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => fetchInitialData(user.id, true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, () => fetchInitialData(user.id, true))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'discount_coupons' }, () => fetchInitialData(user.id, true))
+  // ── Realtime subscriptions — set up only after orgId is resolved ──────────
+  useEffect(() => {
+    if (!orgId) return;
+
+    // ── Realtime: Inventory ────────────────────────────────────────────────
+    const inventoryChannel = supabase
+      .channel(`rt-inventory-${orgId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'inventory_items', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          setInventory(prev => {
+            if (prev.find(i => i.id === r.id)) return prev; // dedup
+            return [...prev, { id: r.id, name: r.name, quantity: r.quantity, unit: r.unit, category: r.category, alertAt: r.alert_at }];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'inventory_items', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          setInventory(prev => prev.map(i => i.id === r.id ? { ...i, name: r.name, quantity: r.quantity, unit: r.unit, category: r.category, alertAt: r.alert_at } : i));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'inventory_items' },
+        (payload) => {
+          const r = payload.old as any;
+          setInventory(prev => prev.filter(i => i.id !== r.id));
+        }
+      )
+      .subscribe();
+
+    // ── Realtime: Menu items ─────────────────────────────────────────────────
+    const menuChannel = supabase
+      .channel(`rt-menu-${orgId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'menu_items', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          setMenu(prev => {
+            if (prev.find(m => m.id === r.id)) return prev;
+            return [...prev, { id: r.id, name: r.name, price: r.price, category: r.category ?? undefined, image_url: r.image_url ?? undefined, diet_type: r.diet_type ?? undefined, isAvailable: r.is_available, ingredients: [] }];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'menu_items', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          setMenu(prev => prev.map(m => m.id === r.id ? { ...m, name: r.name, price: r.price, category: r.category ?? undefined, image_url: r.image_url ?? undefined, diet_type: r.diet_type ?? undefined, isAvailable: r.is_available } : m));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'menu_items' },
+        (payload) => {
+          const r = payload.old as any;
+          setMenu(prev => prev.filter(m => m.id !== r.id));
+        }
+      )
+      .subscribe();
+
+    // ── Realtime: Orders ─────────────────────────────────────────────────────
+    // On INSERT: fetch the full order row (with order_items) then prepend to state.
+    // On UPDATE: patch only the changed fields (status, total, etc.) — no re-fetch needed.
+    // On DELETE: remove from state.
+    const ordersChannel = supabase
+      .channel(`rt-orders-${orgId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'orders', filter: `organization_id=eq.${orgId}` },
+        async (payload) => {
+          const r = payload.new as any;
+          // Fetch order_items for this new order (not included in payload)
+          const { data: oi } = await supabase
+            .from('order_items')
+            .select('menu_item_id, quantity')
+            .eq('order_id', r.id);
+          const newOrder: Order = {
+            id: r.id,
+            customer: { name: r.customer_name, contact: r.customer_contact, email: r.customer_email, dob: r.customer_dob },
+            items: (oi || []).map((o: any) => ({ menuItemId: o.menu_item_id, quantity: o.quantity })),
+            subtotal: r.total,
+            discount: r.discount ?? 0,
+            total: r.total,
+            status: r.status,
+            date: r.created_at,
+            notes: r.notes ?? undefined,
+          };
+          setOrders(prev => {
+            if (prev.find(o => o.id === r.id)) return prev;
+            return [newOrder, ...prev];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'orders', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          setOrders(prev => prev.map(o => o.id === r.id ? {
+            ...o,
+            status: r.status,
+            total: r.total,
+            discount: r.discount ?? o.discount,
+            notes: r.notes ?? o.notes,
+            customer: { ...o.customer, name: r.customer_name ?? o.customer.name },
+          } : o));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'orders' },
+        (payload) => {
+          const r = payload.old as any;
+          setOrders(prev => prev.filter(o => o.id !== r.id));
+        }
+      )
+      .subscribe();
+
+    // ── Realtime: Expenses ───────────────────────────────────────────────────
+    const expensesChannel = supabase
+      .channel(`rt-expenses-${orgId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'expenses', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          const newExpense: Expense = { id: r.id, description: r.description, amount: r.amount, category: r.category, date: r.date || r.created_at };
+          setExpenses(prev => {
+            if (prev.find(e => e.id === r.id)) return prev;
+            return [newExpense, ...prev];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'expenses', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          setExpenses(prev => prev.map(e => e.id === r.id ? { ...e, description: r.description, amount: r.amount, category: r.category, date: r.date || r.created_at } : e));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'expenses' },
+        (payload) => {
+          const r = payload.old as any;
+          setExpenses(prev => prev.filter(e => e.id !== r.id));
+        }
+      )
+      .subscribe();
+
+    // ── Realtime: Coupons ────────────────────────────────────────────────────
+    const couponsChannel = supabase
+      .channel(`rt-coupons-${orgId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'discount_coupons', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          const newCoupon: DiscountCoupon = { id: r.id, code: r.code, discount_percent: r.discount_percent, max_uses: r.max_uses, used_count: r.used_count, valid_from: r.valid_from, valid_to: r.valid_to, is_active: r.is_active, created_at: r.created_at };
+          setCoupons(prev => {
+            if (prev.find(c => c.id === r.id)) return prev;
+            return [newCoupon, ...prev];
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'discount_coupons', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          setCoupons(prev => prev.map(c => c.id === r.id ? { ...c, code: r.code, discount_percent: r.discount_percent, max_uses: r.max_uses, used_count: r.used_count, valid_from: r.valid_from, valid_to: r.valid_to, is_active: r.is_active } : c));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'discount_coupons' },
+        (payload) => {
+          const r = payload.old as any;
+          setCoupons(prev => prev.filter(c => c.id !== r.id));
+        }
+      )
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      supabase.removeChannel(inventoryChannel);
+      supabase.removeChannel(menuChannel);
+      supabase.removeChannel(ordersChannel);
+      supabase.removeChannel(expensesChannel);
+      supabase.removeChannel(couponsChannel);
     };
-  }, [authLoading, user]);
+  }, [orgId]);
   const convertToInventoryUnit = (qty: number, fromUnit: string, toUnit: string): number => {
     if (!fromUnit || !toUnit || fromUnit === toUnit) return qty;
     const from = fromUnit.toLowerCase();

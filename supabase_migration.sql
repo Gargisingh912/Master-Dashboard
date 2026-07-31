@@ -52,3 +52,59 @@ AS $$
   SET used_count = used_count + 1
   WHERE id = coupon_id;
 $$;
+
+-- 6. Enable Supabase Realtime on all tables
+--    REPLICA IDENTITY FULL ensures UPDATE/DELETE events include the full row,
+--    which the dashboard's granular subscriptions depend on.
+
+ALTER TABLE inventory_items REPLICA IDENTITY FULL;
+ALTER TABLE menu_items REPLICA IDENTITY FULL;
+ALTER TABLE menu_ingredients REPLICA IDENTITY FULL;
+ALTER TABLE orders REPLICA IDENTITY FULL;
+ALTER TABLE order_items REPLICA IDENTITY FULL;
+ALTER TABLE expenses REPLICA IDENTITY FULL;
+ALTER TABLE discount_coupons REPLICA IDENTITY FULL;
+
+-- Add all tables to the supabase_realtime publication
+-- (If the publication doesn't exist yet, Supabase creates it automatically
+--  when you toggle Realtime ON in the dashboard. This is a safety net.)
+DO $$
+BEGIN
+  IF EXISTS (SELECT 1 FROM pg_publication WHERE pubname = 'supabase_realtime') THEN
+    -- Add each table only if not already a member
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime' AND tablename = 'inventory_items'
+    ) THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE inventory_items;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime' AND tablename = 'menu_items'
+    ) THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE menu_items;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime' AND tablename = 'orders'
+    ) THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE orders;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime' AND tablename = 'expenses'
+    ) THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE expenses;
+    END IF;
+
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_publication_tables
+      WHERE pubname = 'supabase_realtime' AND tablename = 'discount_coupons'
+    ) THEN
+      ALTER PUBLICATION supabase_realtime ADD TABLE discount_coupons;
+    END IF;
+  END IF;
+END $$;
