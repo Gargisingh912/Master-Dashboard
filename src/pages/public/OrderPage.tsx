@@ -23,6 +23,7 @@ interface CartLine {
 
 const OrderPage: React.FC = () => {
   const { organizationId } = useParams<{ organizationId: string }>();
+  const [orgName, setOrgName] = useState<string>("");
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [cart, setCart] = useState<Record<string, CartLine>>({});
   const [loading, setLoading] = useState(true);
@@ -129,12 +130,21 @@ const OrderPage: React.FC = () => {
     setSubmittedOrder(null);
   };
 
-  // ── Fetch menu ────────────────────────────────────────────────────────────────
+  // ── Fetch menu + org name ────────────────────────────────────────────────────
   useEffect(() => {
     if (!organizationId) return;
     const actualOrgId = base62ToUuid(organizationId);
 
     const fetchData = async () => {
+      const { data: orgData, error: orgErr } = await supabasePublic
+        .from("public_org_info")
+        .select("name")
+        .eq("id", actualOrgId)
+        .maybeSingle();
+
+      if (orgErr) console.error("Failed to load organization:", orgErr);
+      setOrgName(orgData?.name || "");
+
       const { data: items, error: menuErr } = await supabasePublic
         .from("menu_items")
         .select("id, name, price, category, image_url, diet_type")
@@ -184,9 +194,30 @@ const OrderPage: React.FC = () => {
   const bestSellingItems = menuItems.filter((m) => bestSellingIds.includes(m.id));
   bestSellingItems.sort((a, b) => bestSellingIds.indexOf(a.id) - bestSellingIds.indexOf(b.id));
 
+  // ── Meal flow ordering ──────────────────────────────────────────────────────
+  // Maps free-text category names (set by restaurant owners in Menu Management)
+  // to the logical serving order. Matching is keyword-based since owners type
+  // category names freely — "add on" and "Sides" both need to land in the
+  // same bucket. Unmatched categories fall to the end, in their original order.
+  const MEAL_FLOW_KEYWORDS: { rank: number; keywords: string[] }[] = [
+    { rank: 0, keywords: ["starter", "appetizer", "soup", "salad"] },
+    { rank: 1, keywords: ["main", "entree", "entrée", "course"] },
+    { rank: 2, keywords: ["side", "add on", "addon", "extra"] },
+    { rank: 3, keywords: ["dessert", "sweet"] },
+    { rank: 4, keywords: ["beverage", "drink", "cocktail", "wine", "juice", "mocktail"] },
+  ];
+
+  const getMealFlowRank = (category: string): number => {
+    const lower = category.toLowerCase();
+    const match = MEAL_FLOW_KEYWORDS.find((group) =>
+      group.keywords.some((kw) => lower.includes(kw))
+    );
+    return match ? match.rank : 99; // unmatched categories go last
+  };
+
   const userCategories = Array.from(
     new Set(menuItems.map((m) => m.category).filter((c): c is string => !!c))
-  );
+  ).sort((a, b) => getMealFlowRank(a) - getMealFlowRank(b));
 
   const tabs: string[] = [
     ...(bestSellingItems.length > 0 ? ["Best Selling"] : []),
@@ -204,6 +235,15 @@ const OrderPage: React.FC = () => {
     grouped[cat].push(m);
   });
 
+  // ── Diet-first sort helper ────────────────────────────────────────────────────
+  // Used only when dietFilter === 'all': veg items first, then non-veg, each
+  // group ascending by price. Vegan is grouped with veg (both meat-free).
+  const getDietRank = (type?: string): number => {
+    if (type === 'veg' || type === 'vegan') return 0;
+    if (type === 'nonveg') return 1;
+    return 2; // items with no diet_type set, sorted last
+  };
+
   const getTabItems = (tab: string | null): MenuItem[] => {
     let items: MenuItem[];
     if (tab === "Best Selling") items = bestSellingItems;
@@ -213,6 +253,12 @@ const OrderPage: React.FC = () => {
     // Feature 9: apply diet filter
     if (dietFilter !== 'all') {
       items = items.filter(m => m.diet_type === dietFilter);
+    } else if (tab !== "Best Selling") {
+      // Don't touch Best Selling's popularity ranking — only reorder regular category tabs
+      items = [...items].sort((a, b) => {
+        const rankDiff = getDietRank(a.diet_type) - getDietRank(b.diet_type);
+        return rankDiff !== 0 ? rankDiff : a.price - b.price;
+      });
     }
     return items;
   };
@@ -573,8 +619,13 @@ const OrderPage: React.FC = () => {
         </div>
       )}
 
-      {/* Sticky header with category tabs */}
+      {/* Sticky header with brand name + category tabs */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 pt-5 pb-3">
+        {orgName && (
+          <h2 className="text-center text-lg font-extrabold text-gray-900 tracking-tight mb-1">
+            {orgName}
+          </h2>
+        )}
         <h1 className="text-2xl font-bold text-gray-800 mb-1">Order Menu</h1>
 
         {/* Feature 9: Diet filter dropdown */}

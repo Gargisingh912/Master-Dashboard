@@ -31,6 +31,10 @@ const QRCodePage: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", textAlign: "center", padding: "40px 20px" }}>
+      <h2 style={{ fontSize: 26, fontWeight: 900, marginBottom: 4, color: "#F0F6FF", letterSpacing: "-0.02em" }}>
+        {org.name}
+      </h2>
+
       <h1 style={{ fontSize: 20, fontWeight: 800, marginBottom: 8, color: "#F0F6FF" }}>
         Your Menu QR Code
       </h1>
