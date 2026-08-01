@@ -6,7 +6,7 @@ import { useOrderDraft } from "../../context/OrderDraftContext";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { getBestSellingIds } from "../../utils/helpers";
-import { Plus, X } from "lucide-react";
+import { Plus, X, ChevronDown, Search, Trash2 } from "lucide-react";
 
 export default function Orders() {
   const { menu, orders, addOrder } = useKitchen();
@@ -25,10 +25,12 @@ export default function Orders() {
   // ── Floating button + modal visibility ────────────────────────────────────────
   const [showOrderForm, setShowOrderForm] = useState(false);
 
+  // ── Search ───────────────────────────────────────────────────────────────────
+  const [searchQuery, setSearchQuery] = useState("");
+
   const availableMenu = menu.filter((m) => m.isAvailable);
 
   // ── Best Selling: same logic as "Highest Selling Dishes" KPI ────────────────
-  // Last 30 days, top 5 by quantity, no minimum threshold
   const bestSellingIds = useMemo(() => getBestSellingIds(orders), [orders]);
 
   // ── Categories ───────────────────────────────────────────────────────────────
@@ -56,15 +58,21 @@ export default function Orders() {
     return t;
   }, [bestSellingIds, categories, availableMenu]);
 
-  // Default to first available tab
-  const resolvedActive = tabs.includes(activeCategory) ? activeCategory : tabs[0] ?? "Best Selling";
+  const resolvedActive = tabs.includes(activeCategory) ? activeCategory : "";
 
-  const visibleItems = useMemo(() => {
-    if (resolvedActive === "Best Selling") {
+  const itemsForCategory = (cat: string) => {
+    if (cat === "Best Selling") {
       return availableMenu.filter((m) => bestSellingIds.includes(m.id));
     }
-    return grouped[resolvedActive] || [];
-  }, [resolvedActive, availableMenu, bestSellingIds, grouped]);
+    return grouped[cat] || [];
+  };
+
+  // ── Search results (flat, ignores category grouping when active) ────────────
+  const searchResults = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return null;
+    return availableMenu.filter((m) => m.name.toLowerCase().includes(q));
+  }, [searchQuery, availableMenu]);
 
   // ── contact auto-fill ────────────────────────────────────────────────────────
   const handleContactChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -87,6 +95,13 @@ export default function Orders() {
       if (!p[id]) return p;
       if (p[id] <= 1) { const n = { ...p }; delete n[id]; return n; }
       return { ...p, [id]: p[id] - 1 };
+    });
+  // Fully removes a line from the cart regardless of its current quantity
+  const removeLineCompletely = (id: string) =>
+    setCart((p) => {
+      const n = { ...p };
+      delete n[id];
+      return n;
     });
 
   const cartLines = Object.entries(cart)
@@ -117,7 +132,79 @@ export default function Orders() {
     );
 
     clearDraft();
+    setSearchQuery("");
     setShowOrderForm(false);
+  };
+
+  // ── shared item card renderer (used by both accordion and search results) ──
+  const renderItemCard = (item: (typeof availableMenu)[number]) => {
+    const qty = cart[item.id] || 0;
+    return (
+      <div
+        key={item.id}
+        className={`relative rounded-xl border p-3.5 transition-all ${
+          qty > 0
+            ? "border-brand-400 bg-brand-50 dark:border-brand-500/50 dark:bg-brand-500/10"
+            : "border-gray-200 bg-gray-50 dark:border-white/[0.07] dark:bg-white/[0.02] hover:border-gray-300"
+        }`}
+      >
+        {bestSellingIds.includes(item.id) && (
+          <span className="absolute top-2 right-2 text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
+            🔥 Top
+          </span>
+        )}
+
+        <div className="flex gap-3 items-start">
+          {item.image_url && (
+            <div className="w-12 h-12 shrink-0 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
+              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
+            </div>
+          )}
+          <div>
+            <p className="font-semibold text-gray-800 dark:text-white/90 text-sm leading-snug pr-8">{item.name}</p>
+            <p className="text-brand-500 font-medium text-sm mt-0.5">₹{item.price}</p>
+          </div>
+        </div>
+
+        <div className="mt-3 flex items-center justify-between">
+          {qty > 0 ? (
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => removeFromCart(item.id)}
+                className="w-7 h-7 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 flex items-center justify-center text-base font-bold hover:bg-gray-50 transition-colors"
+              >
+                −
+              </button>
+              <span className="w-5 text-center text-sm font-bold text-gray-800 dark:text-white/90">{qty}</span>
+              <button
+                type="button"
+                onClick={() => addToCart(item.id)}
+                className="w-7 h-7 rounded-full bg-brand-500 text-white flex items-center justify-center text-base font-bold hover:bg-brand-600 transition-colors"
+              >
+                +
+              </button>
+              <button
+                type="button"
+                onClick={() => removeLineCompletely(item.id)}
+                className="w-7 h-7 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-red-500 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                title="Remove item"
+              >
+                <Trash2 size={13} />
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => addToCart(item.id)}
+              className="rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-semibold px-3 py-1 hover:bg-brand-100 dark:hover:bg-brand-500/20 transition-colors"
+            >
+              Add
+            </button>
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -241,103 +328,89 @@ export default function Orders() {
                   </div>
                 </div>
 
-                {/* ── Menu selector — category tabs + card grid ── */}
+                {/* ── Menu selector — search + accordion categories ── */}
                 <div className="px-6 py-4">
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Select Items</p>
 
-                  {/* Category tab bar */}
-                  {tabs.length > 0 && (
-                    <div className="flex gap-2 overflow-x-auto pb-2 mb-4 -mx-1 px-1">
-                      {tabs.map((tab) => (
-                        <button
-                          key={tab}
-                          type="button"
-                          onClick={() => setActiveCategory(tab)}
-                          className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition-colors ${
-                            resolvedActive === tab
-                              ? "bg-brand-500 text-white"
-                              : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/[0.05] dark:text-gray-400 dark:hover:bg-white/[0.08]"
-                          }`}
-                        >
-                          {tab}
-                          {tab === "Best Selling" && (
-                            <span className="ml-1.5 text-[10px] opacity-75">🔥</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-
-                  {/* Item cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-1">
-                    {visibleItems.map((item) => {
-                      const qty = cart[item.id] || 0;
-                      return (
-                        <div
-                          key={item.id}
-                          className={`relative rounded-xl border p-3.5 transition-all ${
-                            qty > 0
-                              ? "border-brand-400 bg-brand-50 dark:border-brand-500/50 dark:bg-brand-500/10"
-                              : "border-gray-200 bg-gray-50 dark:border-white/[0.07] dark:bg-white/[0.02] hover:border-gray-300"
-                          }`}
-                        >
-                          {/* Best-seller badge */}
-                          {resolvedActive !== "Best Selling" && bestSellingIds.includes(item.id) && (
-                            <span className="absolute top-2 right-2 text-[10px] font-bold text-amber-600 bg-amber-50 dark:bg-amber-900/20 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
-                              🔥 Top
-                            </span>
-                          )}
-
-                          <div className="flex gap-3 items-start">
-                            {item.image_url && (
-                              <div className="w-12 h-12 shrink-0 rounded-lg overflow-hidden bg-gray-100 dark:bg-gray-800">
-                                <img src={item.image_url} alt={item.name} className="w-full h-full object-cover" />
-                              </div>
-                            )}
-                            <div>
-                              <p className="font-semibold text-gray-800 dark:text-white/90 text-sm leading-snug pr-8">{item.name}</p>
-                              <p className="text-brand-500 font-medium text-sm mt-0.5">₹{item.price}</p>
-                            </div>
-                          </div>
-
-                          <div className="mt-3 flex items-center justify-between">
-                            {qty > 0 ? (
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => removeFromCart(item.id)}
-                                  className="w-7 h-7 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 flex items-center justify-center text-base font-bold hover:bg-gray-50 transition-colors"
-                                >
-                                  −
-                                </button>
-                                <span className="w-5 text-center text-sm font-bold text-gray-800 dark:text-white/90">{qty}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => addToCart(item.id)}
-                                  className="w-7 h-7 rounded-full bg-brand-500 text-white flex items-center justify-center text-base font-bold hover:bg-brand-600 transition-colors"
-                                >
-                                  +
-                                </button>
-                              </div>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={() => addToCart(item.id)}
-                                className="rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-semibold px-3 py-1 hover:bg-brand-100 dark:hover:bg-brand-500/20 transition-colors"
-                              >
-                                Add
-                              </button>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                    {visibleItems.length === 0 && (
-                      <p className="col-span-full text-sm text-gray-400 dark:text-gray-500 italic py-4">
-                        No items in this category.
-                      </p>
+                  {/* Search bar */}
+                  <div className="relative mb-4">
+                    <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="Search menu items..."
+                      className="w-full rounded-lg border border-gray-300 pl-10 pr-4 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                    />
+                    {searchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery("")}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X size={15} />
+                      </button>
                     )}
                   </div>
+
+                  {searchResults !== null ? (
+                    /* ── Flat search results ── */
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 max-h-80 overflow-y-auto pr-1">
+                      {searchResults.map((item) => renderItemCard(item))}
+                      {searchResults.length === 0 && (
+                        <p className="col-span-full text-sm text-gray-400 dark:text-gray-500 italic py-4">
+                          No items found for "{searchQuery}".
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    /* ── Accordion by category ── */
+                    <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
+                      {tabs.map((tab) => {
+                        const isOpen = resolvedActive === tab;
+                        const items = itemsForCategory(tab);
+                        const cartCountInTab = items.reduce((sum, i) => sum + (cart[i.id] || 0), 0);
+                        return (
+                          <div
+                            key={tab}
+                            className="rounded-xl border border-gray-200 dark:border-white/[0.07] overflow-hidden"
+                          >
+                            <button
+                              type="button"
+                              onClick={() => setActiveCategory(isOpen ? "" : tab)}
+                              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/[0.03] hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+                            >
+                              <span className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-white/90">
+                                {tab}
+                                {tab === "Best Selling" && <span className="text-xs">🔥</span>}
+                                {cartCountInTab > 0 && (
+                                  <span className="text-[10px] font-bold text-white bg-brand-500 rounded-full px-1.5 py-0.5">
+                                    {cartCountInTab}
+                                  </span>
+                                )}
+                              </span>
+                              <ChevronDown
+                                size={16}
+                                className={`text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+                              />
+                            </button>
+
+                            {isOpen && (
+                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-3 bg-white dark:bg-gray-900">
+                                {items.length > 0 ? (
+                                  items.map((item) => renderItemCard(item))
+                                ) : (
+                                  <p className="col-span-full text-sm text-gray-400 dark:text-gray-500 italic py-2">
+                                    No items in this category.
+                                  </p>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
 
                 {/* ── Cart summary ── */}
@@ -348,11 +421,21 @@ export default function Orders() {
                     </p>
                     <div className="space-y-1.5 mb-3">
                       {cartLines.map((line) => (
-                        <div key={line.menuItemId} className="flex justify-between text-sm">
+                        <div key={line.menuItemId} className="flex justify-between items-center text-sm">
                           <span className="text-gray-700 dark:text-gray-300">
                             {line.name} <span className="text-gray-400">× {line.quantity}</span>
                           </span>
-                          <span className="font-medium text-gray-800 dark:text-white/80">₹{(line.price * line.quantity).toFixed(2)}</span>
+                          <span className="flex items-center gap-2">
+                            <span className="font-medium text-gray-800 dark:text-white/80">₹{(line.price * line.quantity).toFixed(2)}</span>
+                            <button
+                              type="button"
+                              onClick={() => removeLineCompletely(line.menuItemId)}
+                              className="text-gray-400 hover:text-red-500 transition-colors"
+                              title="Remove from order"
+                            >
+                              <Trash2 size={13} />
+                            </button>
+                          </span>
                         </div>
                       ))}
                     </div>
