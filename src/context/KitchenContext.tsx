@@ -16,20 +16,39 @@ export interface MenuIngredient {
   unit?: string;
 }
 
+export interface MenuAddon {
+  id: string;
+  name: string;
+  price: number;
+}
+
+// Single source of truth — was previously declared twice in this file,
+// which is a TypeScript duplicate-identifier error. Merged into one.
 export interface MenuItem {
   id: string;
   name: string;
   price: number;
   category?: string;
+  subcategory?: string;
   image_url?: string;
   diet_type?: 'veg' | 'nonveg' | 'vegan';
   ingredients: MenuIngredient[];
+  addons: MenuAddon[];
   isAvailable: boolean;
+}
+
+// An add-on selected on a specific order line. Mirrors the shape stored in
+// order_items.selected_addons (jsonb) — see SQL migration.
+export interface SelectedAddon {
+  addon_id: string;
+  name: string;
+  price: number;
 }
 
 export interface OrderItem {
   menuItemId: string;
   quantity: number;
+  selectedAddons?: SelectedAddon[];
 }
 
 export interface Order {
@@ -93,7 +112,7 @@ interface KitchenContextType {
   updateExpense: (id: string, updates: Omit<Expense, "id" | "date">) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   monthlyGoal: number;
-  updateMenuItem: (id: string, updates: { name: string; price: number; category?: string; image_url?: string; diet_type?: 'veg' | 'nonveg' | 'vegan'; ingredients: MenuIngredient[] }) => Promise<void>;
+  updateMenuItem: (id: string, updates: { name: string; price: number; category?: string; subcategory?: string; image_url?: string; diet_type?: 'veg' | 'nonveg' | 'vegan'; ingredients: MenuIngredient[]; addons: MenuAddon[] }) => Promise<void>;
   deleteMenuItem: (id: string) => Promise<void>;
   setMenuItemAvailability: (id: string, isAvailable: boolean) => Promise<void>;
   setMonthlyGoal: (goal: number) => void;
@@ -119,12 +138,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [error, setError] = useState<string | null>(null);
   const [orgId, setOrgId] = useState<string | null>(null);
 
-  // Resolves the CURRENT LOGGED-IN USER's organization_id via their
-  // profile row — this is the same lookup your RLS policies do
-  // internally (organization_id IN (SELECT organization_id FROM
-  // profiles WHERE id = auth.uid())). Previously this grabbed
-  // whichever organization was first in the table, which meant a
-  // second restaurant's user could resolve to the wrong org.
   const resolveOrgId = async (userId: string): Promise<string | null> => {
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
@@ -163,11 +176,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       if (currentOrgId !== orgId) setOrgId(currentOrgId);
 
-      // Every query below is scoped to .eq('organization_id', currentOrgId)
-      // explicitly. RLS would enforce this anyway, but being explicit here
-      // avoids relying solely on RLS to filter — cheaper query planning,
-      // and the intent is clear reading the code.
-
       const { data: invData, error: invError } = await supabase
         .from('inventory_items')
         .select('*')
@@ -185,7 +193,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
 
       const { data: menuData, error: menuError } = await supabase
         .from('menu_items')
-        .select('*, menu_ingredients(*)')
+        .select('*, menu_ingredients(*), menu_addons(*)')
         .eq('organization_id', currentOrgId);
       if (menuError) console.error("Menu fetch error:", menuError);
       const fetchedMenu: MenuItem[] = (menuData || []).map((item: any) => ({
@@ -193,6 +201,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         name: item.name,
         price: item.price,
         category: item.category ?? undefined,
+        subcategory: item.subcategory ?? undefined,
         image_url: item.image_url ?? undefined,
         diet_type: item.diet_type ?? undefined,
         isAvailable: item.is_available,
@@ -200,6 +209,11 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
           inventoryId: ing.inventory_item_id,
           quantity: ing.quantity,
           unit: ing.unit ?? undefined,
+        })),
+        addons: (item.menu_addons || []).map((a: any) => ({
+          id: a.id,
+          name: a.name,
+          price: a.price,
         })),
       }));
       setMenu(fetchedMenu);
@@ -222,14 +236,14 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         items: (o.order_items || []).map((oi: any) => ({
           menuItemId: oi.menu_item_id,
           quantity: oi.quantity,
+          selectedAddons: (oi.selected_addons || []) as SelectedAddon[],
         })),
-        subtotal: o.total, // schema stores only the post-discount total, not a
-                            // separate subtotal — see note below
+        subtotal: o.total,
         discount: o.discount,
         total: o.total,
         status: o.status,
         date: o.created_at,
-        notes: o.notes 
+        notes: o.notes
       }));
       setOrders(fetchedOrders);
 
@@ -248,7 +262,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       }));
       setExpenses(fetchedExpenses);
 
-      // Fetch coupons
       const { data: couponsData, error: couponsError } = await supabase
         .from('discount_coupons')
         .select('*')
@@ -280,11 +293,9 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     fetchInitialData(user.id);
   }, [authLoading, user]);
 
-  // ── Realtime subscriptions — set up only after orgId is resolved ──────────
   useEffect(() => {
     if (!orgId) return;
 
-    // ── Realtime: Inventory ────────────────────────────────────────────────
     const inventoryChannel = supabase
       .channel(`rt-inventory-${orgId}`)
       .on(
@@ -293,7 +304,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         (payload) => {
           const r = payload.new as any;
           setInventory(prev => {
-            if (prev.find(i => i.id === r.id)) return prev; // dedup
+            if (prev.find(i => i.id === r.id)) return prev;
             return [...prev, { id: r.id, name: r.name, quantity: r.quantity, unit: r.unit, category: r.category, alertAt: r.alert_at }];
           });
         }
@@ -316,7 +327,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       )
       .subscribe();
 
-    // ── Realtime: Menu items ─────────────────────────────────────────────────
     const menuChannel = supabase
       .channel(`rt-menu-${orgId}`)
       .on(
@@ -326,7 +336,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
           const r = payload.new as any;
           setMenu(prev => {
             if (prev.find(m => m.id === r.id)) return prev;
-            return [...prev, { id: r.id, name: r.name, price: r.price, category: r.category ?? undefined, image_url: r.image_url ?? undefined, diet_type: r.diet_type ?? undefined, isAvailable: r.is_available, ingredients: [] }];
+            return [...prev, { id: r.id, name: r.name, price: r.price, category: r.category ?? undefined, subcategory: r.subcategory ?? undefined, image_url: r.image_url ?? undefined, diet_type: r.diet_type ?? undefined, isAvailable: r.is_available, ingredients: [], addons: [] }];
           });
         }
       )
@@ -335,7 +345,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         { event: 'UPDATE', schema: 'public', table: 'menu_items', filter: `organization_id=eq.${orgId}` },
         (payload) => {
           const r = payload.new as any;
-          setMenu(prev => prev.map(m => m.id === r.id ? { ...m, name: r.name, price: r.price, category: r.category ?? undefined, image_url: r.image_url ?? undefined, diet_type: r.diet_type ?? undefined, isAvailable: r.is_available } : m));
+          setMenu(prev => prev.map(m => m.id === r.id ? { ...m, name: r.name, price: r.price, category: r.category ?? undefined, subcategory: r.subcategory ?? undefined, image_url: r.image_url ?? undefined, diet_type: r.diet_type ?? undefined, isAvailable: r.is_available } : m));
         }
       )
       .on(
@@ -348,10 +358,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       )
       .subscribe();
 
-    // ── Realtime: Orders ─────────────────────────────────────────────────────
-    // On INSERT: fetch the full order row (with order_items) then prepend to state.
-    // On UPDATE: patch only the changed fields (status, total, etc.) — no re-fetch needed.
-    // On DELETE: remove from state.
     const ordersChannel = supabase
       .channel(`rt-orders-${orgId}`)
       .on(
@@ -359,16 +365,15 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         { event: 'INSERT', schema: 'public', table: 'orders', filter: `organization_id=eq.${orgId}` },
         async (payload) => {
           const r = payload.new as any;
-          // Fetch order_items for this new order (not included in payload)
           const { data: oi } = await supabase
             .from('order_items')
-            .select('menu_item_id, quantity')
+            .select('menu_item_id, quantity, selected_addons')
             .eq('order_id', r.id);
           const newOrder: Order = {
             id: r.id,
             orderCode: r.order_id ?? undefined,
             customer: { name: r.customer_name, contact: r.customer_contact, email: r.customer_email, dob: r.customer_dob },
-            items: (oi || []).map((o: any) => ({ menuItemId: o.menu_item_id, quantity: o.quantity })),
+            items: (oi || []).map((o: any) => ({ menuItemId: o.menu_item_id, quantity: o.quantity, selectedAddons: (o.selected_addons || []) as SelectedAddon[] })),
             subtotal: r.total,
             discount: r.discount ?? 0,
             total: r.total,
@@ -407,7 +412,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       )
       .subscribe();
 
-    // ── Realtime: Expenses ───────────────────────────────────────────────────
     const expensesChannel = supabase
       .channel(`rt-expenses-${orgId}`)
       .on(
@@ -440,7 +444,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       )
       .subscribe();
 
-    // ── Realtime: Coupons ────────────────────────────────────────────────────
     const couponsChannel = supabase
       .channel(`rt-coupons-${orgId}`)
       .on(
@@ -481,19 +484,18 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       supabase.removeChannel(couponsChannel);
     };
   }, [orgId]);
+
   const convertToInventoryUnit = (qty: number, fromUnit: string, toUnit: string): number => {
     if (!fromUnit || !toUnit || fromUnit === toUnit) return qty;
     const from = fromUnit.toLowerCase();
     const to = toUnit.toLowerCase();
-  
-    // Weight
+
     if (from === 'g' && to === 'kg') return qty / 1000;
     if (from === 'kg' && to === 'g') return qty * 1000;
-  
-    // Volume
+
     if (from === 'ml' && to === 'l') return qty / 1000;
     if (from === 'l' && to === 'ml') return qty * 1000;
-  
+
     return qty;
   };
 
@@ -521,16 +523,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     return data.id;
   };
 
-  // Delegates to a Postgres function (adjust_inventory_quantity) so the
-  // increment happens atomically against the DB's current row, not
-  // against a possibly-stale local `inventory` snapshot. Two rapid clicks,
-  // or two staff on different devices, previously could both read the
-  // same starting quantity and stomp on each other.
-  //
-  // No optimistic local update here on purpose — the postgres_changes
-  // subscription on 'inventory_items' (see useEffect above) will fire
-  // once the row changes and call fetchInitialData(user.id, true), which
-  // is the actual source of truth for local state.
   const updateInventoryQuantity = async (id: string, quantity: number) => {
     const { error } = await supabase.rpc('adjust_inventory_quantity', {
       item_id: id,
@@ -592,6 +584,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       name: item.name,
       price: item.price,
       category: item.category || null,
+      subcategory: item.subcategory || null,
       image_url: item.image_url || null,
       diet_type: item.diet_type || null,
       is_available: true,
@@ -621,16 +614,35 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
-    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true, category: item.category, image_url: item.image_url, diet_type: item.diet_type }]);
+    let insertedAddons: MenuAddon[] = [];
+    if (item.addons && item.addons.length > 0) {
+      const addonsToInsert = item.addons.map(a => ({
+        menu_item_id: menuData.id,
+        name: a.name,
+        price: a.price,
+      }));
+      const { data: addonData, error: addonError } = await supabase
+        .from('menu_addons')
+        .insert(addonsToInsert)
+        .select();
+      if (addonError) {
+        console.error(addonError);
+        setError(addonError.message);
+      } else {
+        insertedAddons = (addonData || []).map((a: any) => ({ id: a.id, name: a.name, price: a.price }));
+      }
+    }
+
+    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true, category: item.category, subcategory: item.subcategory, image_url: item.image_url, diet_type: item.diet_type, addons: insertedAddons }]);
   };
 
   const updateMenuItem = async (
     id: string,
-    updates: { name: string; price: number; category?: string; image_url?: string; diet_type?: 'veg' | 'nonveg' | 'vegan'; ingredients: MenuIngredient[] }
+    updates: { name: string; price: number; category?: string; subcategory?: string; image_url?: string; diet_type?: 'veg' | 'nonveg' | 'vegan'; ingredients: MenuIngredient[]; addons: MenuAddon[] }
   ) => {
     const { error: updateError } = await supabase
       .from('menu_items')
-      .update({ name: updates.name, price: updates.price, category: updates.category || null, image_url: updates.image_url || null, diet_type: updates.diet_type || null })
+      .update({ name: updates.name, price: updates.price, category: updates.category || null, subcategory: updates.subcategory || null, image_url: updates.image_url || null, diet_type: updates.diet_type || null })
       .eq('id', id);
 
     if (updateError) {
@@ -639,7 +651,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       return;
     }
 
-    // Replace all ingredients for this item — simpler and safer than diffing
     const { error: deleteError } = await supabase
       .from('menu_ingredients')
       .delete()
@@ -673,10 +684,40 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
+    const { error: deleteAddonError } = await supabase
+      .from('menu_addons')
+      .delete()
+      .eq('menu_item_id', id);
+
+    if (deleteAddonError) {
+      console.error(deleteAddonError);
+      setError(deleteAddonError.message);
+      return;
+    }
+
+    let savedAddons: MenuAddon[] = [];
+    if (updates.addons.length > 0) {
+      const addonsToInsert = updates.addons.map(a => ({
+        menu_item_id: id,
+        name: a.name,
+        price: a.price,
+      }));
+      const { data: addonData, error: addonInsertError } = await supabase
+        .from('menu_addons')
+        .insert(addonsToInsert)
+        .select();
+      if (addonInsertError) {
+        console.error(addonInsertError);
+        setError(addonInsertError.message);
+        return;
+      }
+      savedAddons = (addonData || []).map((a: any) => ({ id: a.id, name: a.name, price: a.price }));
+    }
+
     setMenu(prev =>
       prev.map(m =>
         m.id === id
-          ? { ...m, name: updates.name, price: updates.price, category: updates.category, diet_type: updates.diet_type, ingredients: updates.ingredients }
+          ? { ...m, name: updates.name, price: updates.price, category: updates.category, subcategory: updates.subcategory, diet_type: updates.diet_type, ingredients: updates.ingredients, addons: savedAddons }
           : m
       )
     );
@@ -714,6 +755,8 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     );
   };
 
+  // ── addOrder — now factors add-on prices into subtotal/total, and
+  // persists each line's selected add-ons into order_items.selected_addons ──
   const addOrder = async (customerName: string, items: OrderItem[], discount: number, contact?: string, email?: string, dob?: string, notes?: string, couponCode?: string, couponDiscount?: number) => {
     if (!orgId) {
       setError("No organization context — please log in again.");
@@ -726,7 +769,9 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     items.forEach((orderItem) => {
       const menuItem = menu.find((m) => m.id === orderItem.menuItemId);
       if (menuItem) {
-        subtotal += menuItem.price * orderItem.quantity;
+        const addonTotal = (orderItem.selectedAddons || []).reduce((s, a) => s + a.price, 0);
+        subtotal += (menuItem.price + addonTotal) * orderItem.quantity;
+
         menuItem.ingredients.forEach((ing) => {
           const deductionQty = ing.quantity * orderItem.quantity;
           inventoryDeductions[ing.inventoryId] = (inventoryDeductions[ing.inventoryId] || 0) + deductionQty;
@@ -736,10 +781,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const total = subtotal - (subtotal * discount) / 100;
 
-    // NOTE: `order_id` (the human-readable QR order code) is intentionally
-    // NOT set here — this is the walk-in/manual order path. Leaving it
-    // NULL is what lets the rest of the app (DB trigger, alarm, Incoming
-    // QR Orders widget) tell walk-in orders apart from QR orders.
     const { data: orderData, error: orderError } = await supabase.from('orders').insert({
       organization_id: orgId,
       customer_name: customerName,
@@ -764,6 +805,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       order_id: orderData.id,
       menu_item_id: i.menuItemId,
       quantity: i.quantity,
+      selected_addons: i.selectedAddons || [],
     }));
     const { error: orderItemsError } = await supabase.from('order_items').insert(orderItemsToInsert);
     if (orderItemsError) {
@@ -793,23 +835,23 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     let newSubtotal = 0;
 
     if (updates.items) {
-      // Calculate new total based on items
       newSubtotal = updates.items.reduce((sum, item) => {
         const menuItem = menu.find(m => m.id === item.menuItemId);
-        return sum + (menuItem ? menuItem.price * item.quantity : 0);
+        const addonTotal = (item.selectedAddons || []).reduce((s, a) => s + a.price, 0);
+        return sum + (menuItem ? (menuItem.price + addonTotal) * item.quantity : 0);
       }, 0);
-      
+
       const order = orders.find(o => o.id === id);
       const discount = updates.discount ?? (order?.discount || 0);
       newTotal = newSubtotal - (newSubtotal * discount) / 100;
 
-      // Update order_items
       await supabase.from('order_items').delete().eq('order_id', id);
       if (updates.items.length > 0) {
         const orderItemsToInsert = updates.items.map(i => ({
           order_id: id,
           menu_item_id: i.menuItemId,
           quantity: i.quantity,
+          selected_addons: i.selectedAddons || [],
         }));
         await supabase.from('order_items').insert(orderItemsToInsert);
       }
@@ -822,8 +864,8 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     }).eq('id', id);
 
     if (!error) {
-      setOrders(prev => prev.map(o => o.id === id ? { 
-        ...o, 
+      setOrders(prev => prev.map(o => o.id === id ? {
+        ...o,
         customer: { ...o.customer, name: updates.customer_name || o.customer.name },
         ...(updates.items && { items: updates.items, subtotal: newSubtotal }),
         total: newTotal ?? o.total,

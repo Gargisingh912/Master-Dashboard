@@ -1,13 +1,19 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import { supabase } from "../../config/supabase";
-import { useKitchen, MenuIngredient } from "../../context/KitchenContext";
+import { useKitchen, MenuIngredient, MenuAddon } from "../../context/KitchenContext";
 import { Trash2 } from "lucide-react";
 
 interface IngredientRow {
   inventoryId: string;
   quantity: number;
   unit?: string;
+}
+
+interface AddonRow {
+  id?: string;
+  name: string;
+  price: number;
 }
 
 function IngredientEditor({
@@ -163,6 +169,63 @@ function IngredientEditor({
   );
 }
 
+function AddonEditor({
+  addons,
+  onAdd,
+  onUpdate,
+  onRemove,
+}: {
+  addons: AddonRow[];
+  onAdd: () => void;
+  onUpdate: (index: number, field: "name" | "price", value: string) => void;
+  onRemove: (index: number) => void;
+}) {
+  return (
+    <div className="w-full min-w-0">
+      <div className="flex justify-between items-center mb-2">
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+          Add-ons <span className="text-gray-400 font-normal">(optional — e.g. Coke, Fries)</span>
+        </label>
+        <button
+          type="button"
+          onClick={onAdd}
+          className="text-sm text-brand-500 hover:text-brand-600 font-medium"
+        >
+          + Add Add-on
+        </button>
+      </div>
+
+      {addons.map((addon, index) => (
+        <div key={index} className="flex gap-2 items-center mb-2 w-full min-w-0">
+          <input
+            type="text"
+            value={addon.name}
+            onChange={(e) => onUpdate(index, "name", e.target.value)}
+            placeholder="Add-on name (e.g. Coke)"
+            className="min-w-0 flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          />
+          <input
+            type="number"
+            value={addon.price || ""}
+            onChange={(e) => onUpdate(index, "price", e.target.value)}
+            placeholder="Price"
+            min="0"
+            step="0.01"
+            className="w-24 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+          />
+          <button
+            type="button"
+            onClick={() => onRemove(index)}
+            className="text-red-500 hover:text-red-700 text-sm shrink-0"
+          >
+            Remove
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 // ─── Pastel colours cycled by category name ───────────────────────────────────
 const BADGE_COLOURS = [
   "bg-violet-100 text-violet-700 dark:bg-violet-900/20 dark:text-violet-300",
@@ -194,18 +257,22 @@ export default function Menu() {
   const [newDishName, setNewDishName] = useState("");
   const [newDishPrice, setNewDishPrice] = useState("");
   const [newDishCategory, setNewDishCategory] = useState("");
+  const [newDishSubcategory, setNewDishSubcategory] = useState("");
   const [newDishImageUrl, setNewDishImageUrl] = useState("");
   const [newDishDietType, setNewDishDietType] = useState<'veg' | 'nonveg' | 'vegan' | ''>("");
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
+  const [addons, setAddons] = useState<AddonRow[]>([]);
 
   // ── edit state ──────────────────────────────────────────────────────────────
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editCategory, setEditCategory] = useState("");
+  const [editSubcategory, setEditSubcategory] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
   const [editDietType, setEditDietType] = useState<'veg' | 'nonveg' | 'vegan' | ''>("");
   const [editIngredients, setEditIngredients] = useState<IngredientRow[]>([]);
+  const [editAddons, setEditAddons] = useState<AddonRow[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
@@ -242,7 +309,12 @@ export default function Menu() {
   };
 
   // ── filter state ────────────────────────────────────────────────────────────
+  // Two-tier now: category, then (optionally) subcategory within it — mirrors
+  // the Category → Subcategory → Item → Add-ons hierarchy used on the
+  // ordering side (Orders.tsx / OrderPage.tsx), so admins browse dishes the
+  // same way customers do.
   const [activeFilter, setActiveFilter] = useState<string>("All");
+  const [activeSubFilter, setActiveSubFilter] = useState<string>("All");
 
   // ── auto-disable tracking ───────────────────────────────────────────────────
   const autoDisabledRef = useRef<Set<string>>(new Set());
@@ -255,16 +327,50 @@ export default function Menu() {
     return Array.from(cats);
   }, [menu]);
 
+  // category -> its distinct subcategories, so the subcategory input/datalist
+  // and the second-tier filter bar only ever show subcategories that
+  // actually belong to the selected category, instead of every subcategory
+  // in the whole menu.
+  const categorySubcategoryMap = useMemo(() => {
+    const map: Record<string, string[]> = {};
+    menu.forEach((m) => {
+      if (!m.category || !m.subcategory) return;
+      if (!map[m.category]) map[m.category] = [];
+      if (!map[m.category].includes(m.subcategory)) map[m.category].push(m.subcategory);
+    });
+    return map;
+  }, [menu]);
+
   const filterTabs = ["All", ...existingCategories];
 
+  // Subcategory tabs available for whichever category tab is active. Only
+  // meaningful (and only rendered) when that category actually has more
+  // than one distinct subcategory.
+  const subFilterTabs = useMemo(() => {
+    if (activeFilter === "All" || activeFilter === "Uncategorized") return [];
+    const subs = categorySubcategoryMap[activeFilter] || [];
+    return subs.length > 1 ? ["All", ...subs] : [];
+  }, [activeFilter, categorySubcategoryMap]);
+
+  // Reset subcategory filter whenever the category filter changes so a
+  // stale subcategory selection from a different category can't linger.
+  const handleCategoryFilterChange = (tab: string) => {
+    setActiveFilter(tab);
+    setActiveSubFilter("All");
+  };
+
   const filteredMenu = useMemo(() => {
-    if (activeFilter === "All") return menu;
-    return menu.filter((m) =>
-      activeFilter === "Uncategorized"
-        ? !m.category
-        : m.category === activeFilter
-    );
-  }, [menu, activeFilter]);
+    let items = menu;
+    if (activeFilter !== "All") {
+      items = items.filter((m) =>
+        activeFilter === "Uncategorized" ? !m.category : m.category === activeFilter
+      );
+    }
+    if (activeSubFilter !== "All") {
+      items = items.filter((m) => m.subcategory === activeSubFilter);
+    }
+    return items;
+  }, [menu, activeFilter, activeSubFilter]);
 
   const getCategoryColour = useCategoryColour(existingCategories);
 
@@ -292,7 +398,7 @@ export default function Menu() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [inventory, menu]);
 
-  // ── add-form handlers ───────────────────────────────────────────────────────
+  // ── add-form ingredient handlers ────────────────────────────────────────────
   const handleAddIngredient = () => {
     if (inventory.length > 0) {
       setIngredients([...ingredients, { inventoryId: inventory[0].id, quantity: 1, unit: inventory[0].unit || "kg" }]);
@@ -311,6 +417,16 @@ export default function Menu() {
     setIngredients(ingredients.filter((_, i) => i !== index));
   };
 
+  // ── add-form addon handlers ─────────────────────────────────────────────────
+  const handleAddAddon = () => setAddons([...addons, { name: "", price: 0 }]);
+  const handleUpdateAddon = (index: number, field: "name" | "price", value: string) => {
+    const updated = [...addons];
+    if (field === "name") updated[index].name = value;
+    else updated[index].price = parseFloat(value) || 0;
+    setAddons(updated);
+  };
+  const handleRemoveAddon = (index: number) => setAddons(addons.filter((_, i) => i !== index));
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDishName || !newDishPrice) return;
@@ -319,17 +435,21 @@ export default function Menu() {
       name: newDishName,
       price: parseFloat(newDishPrice),
       category: newDishCategory.trim() || undefined,
+      subcategory: newDishSubcategory.trim() || undefined,
       image_url: newDishImageUrl.trim() || undefined,
       diet_type: newDishDietType || undefined,
       ingredients,
+      addons: addons.filter(a => a.name.trim() !== "") as MenuAddon[],
     });
 
     setNewDishName("");
     setNewDishPrice("");
     setNewDishCategory("");
+    setNewDishSubcategory("");
     setNewDishImageUrl("");
     setNewDishDietType("");
     setIngredients([]);
+    setAddons([]);
     setShowAddForm(false);
   };
 
@@ -339,9 +459,11 @@ export default function Menu() {
     setEditName(item.name);
     setEditPrice(String(item.price));
     setEditCategory(item.category ?? "");
+    setEditSubcategory(item.subcategory ?? "");
     setEditImageUrl(item.image_url ?? "");
     setEditDietType((item.diet_type as any) ?? "");
     setEditIngredients(item.ingredients.map((ing) => ({ ...ing })));
+    setEditAddons(item.addons.map((a) => ({ ...a })));
   };
 
   const cancelEditing = () => {
@@ -349,9 +471,11 @@ export default function Menu() {
     setEditName("");
     setEditPrice("");
     setEditCategory("");
+    setEditSubcategory("");
     setEditImageUrl("");
     setEditDietType("");
     setEditIngredients([]);
+    setEditAddons([]);
   };
 
   const handleEditAddIngredient = () => {
@@ -372,6 +496,15 @@ export default function Menu() {
     setEditIngredients(editIngredients.filter((_, i) => i !== index));
   };
 
+  const handleEditAddAddon = () => setEditAddons([...editAddons, { name: "", price: 0 }]);
+  const handleEditUpdateAddon = (index: number, field: "name" | "price", value: string) => {
+    const updated = [...editAddons];
+    if (field === "name") updated[index].name = value;
+    else updated[index].price = parseFloat(value) || 0;
+    setEditAddons(updated);
+  };
+  const handleEditRemoveAddon = (index: number) => setEditAddons(editAddons.filter((_, i) => i !== index));
+
   // Diet type is applied to local edit state immediately on click; the visible
   // badge on the card only updates once the whole edit is saved (same as
   // name/price/category), since all fields save together via updateMenuItem.
@@ -386,9 +519,11 @@ export default function Menu() {
       name: editName,
       price: parseFloat(editPrice),
       category: editCategory.trim() || undefined,
+      subcategory: editSubcategory.trim() || undefined,
       image_url: editImageUrl.trim() || undefined,
       diet_type: editDietType || undefined,
       ingredients: editIngredients,
+      addons: editAddons.filter(a => a.name.trim() !== "") as MenuAddon[],
     });
 
     cancelEditing();
@@ -431,6 +566,50 @@ export default function Menu() {
       </datalist>
     </div>
   );
+
+  // ── subcategory input (shared between add and edit forms) ───────────────────
+  // Scoped to the category currently typed into the sibling CategoryInput —
+  // this is what actually makes "Category → Subcategory" a real hierarchy
+  // for the person managing the menu, instead of two unrelated free-text
+  // fields. Falls back to suggesting every known subcategory when no
+  // category has been chosen yet.
+  let subcategoryInputCounter = 0;
+  const SubcategoryInput = ({
+    value,
+    onChange,
+    scopedCategory,
+  }: {
+    value: string;
+    onChange: (v: string) => void;
+    scopedCategory: string;
+  }) => {
+    const listId = `subcategory-suggestions-${subcategoryInputCounter++}`;
+    const trimmedCategory = scopedCategory.trim();
+    const suggestions = trimmedCategory
+      ? categorySubcategoryMap[trimmedCategory] || []
+      : Array.from(new Set(Object.values(categorySubcategoryMap).flat()));
+
+    return (
+      <div>
+        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+          Subcategory <span className="text-gray-400 font-normal">(optional)</span>
+        </label>
+        <input
+          type="text"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          list={listId}
+          placeholder="e.g. Hakka Noodles, Schezwan"
+          className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+        />
+        <datalist id={listId}>
+          {suggestions.map((sub) => (
+            <option key={sub} value={sub} />
+          ))}
+        </datalist>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -475,6 +654,11 @@ export default function Menu() {
                   />
                 </div>
                 <CategoryInput value={newDishCategory} onChange={setNewDishCategory} />
+                <SubcategoryInput
+                  value={newDishSubcategory}
+                  onChange={setNewDishSubcategory}
+                  scopedCategory={newDishCategory}
+                />
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Diet Type</label>
                   <select
@@ -518,6 +702,13 @@ export default function Menu() {
                 addInventoryItem={addInventoryItem}
               />
 
+              <AddonEditor
+                addons={addons}
+                onAdd={handleAddAddon}
+                onUpdate={handleUpdateAddon}
+                onRemove={handleRemoveAddon}
+              />
+
               <div className="flex justify-end pt-4">
                 <button
                   type="submit"
@@ -530,16 +721,35 @@ export default function Menu() {
           </div>
         )}
 
-        {/* ── Category filter tabs ── */}
+        {/* ── Category filter tabs (tier 1) ── */}
         {filterTabs.length > 1 && (
           <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
             {filterTabs.map((tab) => (
               <button
                 key={tab}
-                onClick={() => setActiveFilter(tab)}
+                onClick={() => handleCategoryFilterChange(tab)}
                 className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-medium transition-colors ${activeFilter === tab
                   ? "bg-brand-500 text-white"
                   : "bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-white/[0.05] dark:text-gray-400 dark:hover:bg-white/[0.08]"
+                  }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        )}
+
+        {/* ── Subcategory filter tabs (tier 2) — only shown once a category
+             with more than one distinct subcategory is selected ── */}
+        {subFilterTabs.length > 0 && (
+          <div className="flex gap-2 overflow-x-auto pb-1 pl-2 scrollbar-hide">
+            {subFilterTabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveSubFilter(tab)}
+                className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium border transition-colors ${activeSubFilter === tab
+                  ? "bg-brand-50 text-brand-600 border-brand-300 dark:bg-brand-500/10 dark:text-brand-400 dark:border-brand-500/40"
+                  : "bg-transparent text-gray-500 border-gray-200 hover:bg-gray-50 dark:text-gray-400 dark:border-white/10 dark:hover:bg-white/[0.05]"
                   }`}
               >
                 {tab}
@@ -593,6 +803,11 @@ export default function Menu() {
                           className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
                         />
                       </div>
+                      <SubcategoryInput
+                        value={editSubcategory}
+                        onChange={setEditSubcategory}
+                        scopedCategory={editCategory}
+                      />
                       <div>
                         <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Diet Type</label>
                         <select
@@ -632,6 +847,13 @@ export default function Menu() {
                       onUpdate={handleEditUpdateIngredient}
                       onRemove={handleEditRemoveIngredient}
                       addInventoryItem={addInventoryItem}
+                    />
+
+                    <AddonEditor
+                      addons={editAddons}
+                      onAdd={handleEditAddAddon}
+                      onUpdate={handleEditUpdateAddon}
+                      onRemove={handleEditRemoveAddon}
                     />
 
                     <div className="flex justify-end gap-2 pt-2">
@@ -703,11 +925,20 @@ export default function Menu() {
                       </div>
                     </div>
 
-                    {/* Category badge */}
-                    {item.category && (
-                      <span className={`inline-block mb-3 rounded-full px-2.5 py-0.5 text-xs font-semibold ${getCategoryColour(item.category)}`}>
-                        {item.category}
-                      </span>
+                    {/* Category + subcategory badges */}
+                    {(item.category || item.subcategory) && (
+                      <div className="mb-3 flex flex-wrap gap-1.5">
+                        {item.category && (
+                          <span className={`inline-block rounded-full px-2.5 py-0.5 text-xs font-semibold ${getCategoryColour(item.category)}`}>
+                            {item.category}
+                          </span>
+                        )}
+                        {item.subcategory && (
+                          <span className="inline-block rounded-full px-2.5 py-0.5 text-xs font-medium bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-gray-400">
+                            {item.subcategory}
+                          </span>
+                        )}
+                      </div>
                     )}
 
                     {/* Low-stock warning */}
@@ -721,7 +952,7 @@ export default function Menu() {
                     )}
 
                     {/* Ingredients */}
-                    <div>
+                    <div className="mb-3">
                       <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Ingredients</h4>
                       <ul className="space-y-1">
                         {item.ingredients.map((ing, idx) => {
@@ -738,6 +969,21 @@ export default function Menu() {
                         })}
                       </ul>
                     </div>
+
+                    {/* Add-ons */}
+                    {item.addons.length > 0 && (
+                      <div>
+                        <h4 className="text-sm font-medium text-gray-500 dark:text-gray-400 mb-2">Add-ons</h4>
+                        <ul className="space-y-1">
+                          {item.addons.map((a) => (
+                            <li key={a.id} className="text-sm flex justify-between text-gray-700 dark:text-gray-300">
+                              <span>{a.name}</span>
+                              <span className="text-gray-500">₹{a.price}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

@@ -1,12 +1,28 @@
 import React, { useMemo, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import OrdersTable from "../../components/tables/BasicTables/OrdersTable";
-import { useKitchen } from "../../context/KitchenContext";
+import { useKitchen, MenuAddon } from "../../context/KitchenContext";
 import { useOrderDraft } from "../../context/OrderDraftContext";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 import { getBestSellingIds } from "../../utils/helpers";
 import { Plus, X, ChevronDown, Search, Trash2 } from "lucide-react";
+
+// ── Composite cart key helpers ──────────────────────────────────────────────
+// A cart entry key is either just the menu item id ("abc123"), or the menu
+// item id plus a sorted, comma-joined list of selected addon ids
+// ("abc123::addon1,addon2"). This keeps OrderDraftContext's cart shape
+// (Record<string, number>) unchanged while still letting the same dish be
+// added multiple times with different addon combinations as separate lines.
+const makeCartKey = (menuItemId: string, addonIds: string[]): string => {
+  if (addonIds.length === 0) return menuItemId;
+  return `${menuItemId}::${[...addonIds].sort().join(",")}`;
+};
+
+const parseCartKey = (key: string): { menuItemId: string; addonIds: string[] } => {
+  const [menuItemId, addonPart] = key.split("::");
+  return { menuItemId, addonIds: addonPart ? addonPart.split(",") : [] };
+};
 
 export default function Orders() {
   const { menu, orders, addOrder } = useKitchen();
@@ -18,7 +34,6 @@ export default function Orders() {
     notes, setNotes,
     discount, setDiscount,
     cart, setCart,
-    activeCategory, setActiveCategory,
     clearDraft,
   } = useOrderDraft();
 
@@ -27,6 +42,38 @@ export default function Orders() {
 
   // ── Search ───────────────────────────────────────────────────────────────────
   const [searchQuery, setSearchQuery] = useState("");
+
+  // ── Nested accordion state ──────────────────────────────────────────────────
+  // Category → Subcategory browsing. Both levels support multiple
+  // simultaneously-open sections (independent toggles), not a single-open
+  // accordion — matching the reference menu-hierarchy UI. Subcategory keys
+  // are namespaced as "<category>::<subcategory>" so the same subcategory
+  // name under two different categories doesn't collide.
+  const [openCategories, setOpenCategories] = useState<Set<string>>(new Set());
+  const [openSubcategories, setOpenSubcategories] = useState<Set<string>>(new Set());
+
+  const toggleCategory = (tab: string) => {
+    setOpenCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(tab)) next.delete(tab);
+      else next.add(tab);
+      return next;
+    });
+  };
+
+  const toggleSubcategory = (key: string) => {
+    setOpenSubcategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // ── Add-on picker state — which item's picker is currently open, and the
+  // addon ids currently checked before confirming ──────────────────────────
+  const [addonPickerItemId, setAddonPickerItemId] = useState<string | null>(null);
+  const [pendingAddonIds, setPendingAddonIds] = useState<Set<string>>(new Set());
 
   const availableMenu = menu.filter((m) => m.isAvailable);
 
@@ -58,13 +105,23 @@ export default function Orders() {
     return t;
   }, [bestSellingIds, categories, availableMenu]);
 
-  const resolvedActive = tabs.includes(activeCategory) ? activeCategory : "";
-
   const itemsForCategory = (cat: string) => {
     if (cat === "Best Selling") {
       return availableMenu.filter((m) => bestSellingIds.includes(m.id));
     }
     return grouped[cat] || [];
+  };
+
+  // Groups a category's items by subcategory. Items without a subcategory
+  // are bucketed under "" and rendered first, with no subheading/accordion.
+  const groupBySubcategory = (items: typeof availableMenu) => {
+    const g: Record<string, typeof availableMenu> = {};
+    items.forEach((m) => {
+      const sub = m.subcategory || "";
+      if (!g[sub]) g[sub] = [];
+      g[sub].push(m);
+    });
+    return g;
   };
 
   // ── Search results (flat, ignores category grouping when active) ────────────
@@ -89,29 +146,89 @@ export default function Orders() {
   };
 
   // ── cart helpers ─────────────────────────────────────────────────────────────
-  const addToCart = (id: string) => setCart((p) => ({ ...p, [id]: (p[id] || 0) + 1 }));
-  const removeFromCart = (id: string) =>
+  const addToCart = (key: string) => setCart((p) => ({ ...p, [key]: (p[key] || 0) + 1 }));
+  const removeFromCart = (key: string) =>
     setCart((p) => {
-      if (!p[id]) return p;
-      if (p[id] <= 1) { const n = { ...p }; delete n[id]; return n; }
-      return { ...p, [id]: p[id] - 1 };
+      if (!p[key]) return p;
+      if (p[key] <= 1) { const n = { ...p }; delete n[key]; return n; }
+      return { ...p, [key]: p[key] - 1 };
     });
-  // Fully removes a line from the cart regardless of its current quantity
-  const removeLineCompletely = (id: string) =>
+  const removeLineCompletely = (key: string) =>
     setCart((p) => {
       const n = { ...p };
-      delete n[id];
+      delete n[key];
       return n;
     });
 
-  const cartLines = Object.entries(cart)
-    .map(([id, qty]) => {
-      const item = availableMenu.find((m) => m.id === id);
-      return item ? { menuItemId: id, name: item.name, price: item.price, quantity: qty } : null;
-    })
-    .filter(Boolean) as { menuItemId: string; name: string; price: number; quantity: number }[];
+  // Sums cart quantity across every line belonging to a given menu item id
+  // (a dish can appear multiple times with different addon combos).
+  const totalQtyForItem = (itemId: string): number =>
+    Object.entries(cart)
+      .filter(([key]) => parseCartKey(key).menuItemId === itemId)
+      .reduce((s, [, qty]) => s + qty, 0);
 
-  const subtotal = cartLines.reduce((s, l) => s + l.price * l.quantity, 0);
+  // Sums cart quantity across a whole list of items — used for
+  // category/subcategory badge counts in the accordion headers.
+  const totalQtyForItems = (items: { id: string }[]): number =>
+    items.reduce((sum, i) => sum + totalQtyForItem(i.id), 0);
+
+  // Plain "Add" click for an item with no addons — adds directly.
+  // For items with addons, opens the picker instead of adding immediately.
+  const handleAddClick = (item: (typeof availableMenu)[number]) => {
+    if (item.addons.length === 0) {
+      addToCart(makeCartKey(item.id, []));
+      return;
+    }
+    setAddonPickerItemId(item.id);
+    setPendingAddonIds(new Set());
+  };
+
+  const toggleAddonSelection = (addonId: string) => {
+    setPendingAddonIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(addonId)) next.delete(addonId);
+      else next.add(addonId);
+      return next;
+    });
+  };
+
+  const confirmAddonSelection = () => {
+    if (!addonPickerItemId) return;
+    addToCart(makeCartKey(addonPickerItemId, Array.from(pendingAddonIds)));
+    setAddonPickerItemId(null);
+    setPendingAddonIds(new Set());
+  };
+
+  const cancelAddonSelection = () => {
+    setAddonPickerItemId(null);
+    setPendingAddonIds(new Set());
+  };
+
+  // Resolves a cart key into full display/pricing info
+  const resolveCartLine = (key: string, qty: number) => {
+    const { menuItemId, addonIds } = parseCartKey(key);
+    const item = availableMenu.find((m) => m.id === menuItemId);
+    if (!item) return null;
+    const selectedAddons: MenuAddon[] = addonIds
+      .map((id) => item.addons.find((a) => a.id === id))
+      .filter(Boolean) as MenuAddon[];
+    const addonTotal = selectedAddons.reduce((s, a) => s + a.price, 0);
+    return {
+      key,
+      menuItemId,
+      name: item.name,
+      basePrice: item.price,
+      addons: selectedAddons,
+      unitPrice: item.price + addonTotal,
+      quantity: qty,
+    };
+  };
+
+  const cartLines = Object.entries(cart)
+    .map(([key, qty]) => resolveCartLine(key, qty))
+    .filter(Boolean) as NonNullable<ReturnType<typeof resolveCartLine>>[];
+
+  const subtotal = cartLines.reduce((s, l) => s + l.unitPrice * l.quantity, 0);
   const discountAmount = (subtotal * discount) / 100;
   const total = subtotal - discountAmount;
 
@@ -123,7 +240,11 @@ export default function Orders() {
 
     addOrder(
       customerName,
-      cartLines.map((l) => ({ menuItemId: l.menuItemId, quantity: l.quantity })),
+      cartLines.map((l) => ({
+        menuItemId: l.menuItemId,
+        quantity: l.quantity,
+        selectedAddons: l.addons.map((a) => ({ addon_id: a.id, name: a.name, price: a.price })),
+      })) as any, // addOrder's OrderItem type may need selectedAddons added — see note below
       discount,
       contact,
       email,
@@ -136,14 +257,17 @@ export default function Orders() {
     setShowOrderForm(false);
   };
 
-  // ── shared item card renderer (used by both accordion and search results) ──
+  // ── shared item card renderer (used by accordion and search results) ───────
   const renderItemCard = (item: (typeof availableMenu)[number]) => {
-    const qty = cart[item.id] || 0;
+    const totalQtyForItemValue = totalQtyForItem(item.id);
+
+    const isPickerOpen = addonPickerItemId === item.id;
+
     return (
       <div
         key={item.id}
         className={`relative rounded-xl border p-3.5 transition-all ${
-          qty > 0
+          totalQtyForItemValue > 0
             ? "border-brand-400 bg-brand-50 dark:border-brand-500/50 dark:bg-brand-500/10"
             : "border-gray-200 bg-gray-50 dark:border-white/[0.07] dark:bg-white/[0.02] hover:border-gray-300"
         }`}
@@ -163,30 +287,33 @@ export default function Orders() {
           <div>
             <p className="font-semibold text-gray-800 dark:text-white/90 text-sm leading-snug pr-8">{item.name}</p>
             <p className="text-brand-500 font-medium text-sm mt-0.5">₹{item.price}</p>
+            {item.addons.length > 0 && (
+              <p className="text-[11px] text-gray-400 mt-0.5">{item.addons.length} add-on{item.addons.length !== 1 ? "s" : ""} available</p>
+            )}
           </div>
         </div>
 
         <div className="mt-3 flex items-center justify-between">
-          {qty > 0 ? (
+          {totalQtyForItemValue > 0 && item.addons.length === 0 ? (
             <div className="flex items-center gap-2">
               <button
                 type="button"
-                onClick={() => removeFromCart(item.id)}
+                onClick={() => removeFromCart(makeCartKey(item.id, []))}
                 className="w-7 h-7 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 flex items-center justify-center text-base font-bold hover:bg-gray-50 transition-colors"
               >
                 −
               </button>
-              <span className="w-5 text-center text-sm font-bold text-gray-800 dark:text-white/90">{qty}</span>
+              <span className="w-5 text-center text-sm font-bold text-gray-800 dark:text-white/90">{totalQtyForItemValue}</span>
               <button
                 type="button"
-                onClick={() => addToCart(item.id)}
+                onClick={() => addToCart(makeCartKey(item.id, []))}
                 className="w-7 h-7 rounded-full bg-brand-500 text-white flex items-center justify-center text-base font-bold hover:bg-brand-600 transition-colors"
               >
                 +
               </button>
               <button
                 type="button"
-                onClick={() => removeLineCompletely(item.id)}
+                onClick={() => removeLineCompletely(makeCartKey(item.id, []))}
                 className="w-7 h-7 rounded-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-red-500 flex items-center justify-center hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                 title="Remove item"
               >
@@ -196,13 +323,148 @@ export default function Orders() {
           ) : (
             <button
               type="button"
-              onClick={() => addToCart(item.id)}
+              onClick={() => handleAddClick(item)}
               className="rounded-full bg-brand-50 dark:bg-brand-500/10 text-brand-600 dark:text-brand-400 text-xs font-semibold px-3 py-1 hover:bg-brand-100 dark:hover:bg-brand-500/20 transition-colors"
             >
-              Add
+              {totalQtyForItemValue > 0 ? `Add another (${totalQtyForItemValue} in cart)` : "Add"}
             </button>
           )}
         </div>
+
+        {/* ── Inline add-on picker ── */}
+        {isPickerOpen && (
+          <div
+            className="mt-3 pt-3 border-t border-gray-200 dark:border-white/[0.08] space-y-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-xs font-semibold text-gray-600 dark:text-gray-300">Choose add-ons</p>
+            {item.addons.map((addon) => (
+              <label key={addon.id} className="flex items-center justify-between text-sm cursor-pointer">
+                <span className="flex items-center gap-2 text-gray-700 dark:text-gray-300">
+                  <input
+                    type="checkbox"
+                    checked={pendingAddonIds.has(addon.id)}
+                    onChange={() => toggleAddonSelection(addon.id)}
+                    className="rounded border-gray-300"
+                  />
+                  {addon.name}
+                </span>
+                <span className="text-gray-500">+₹{addon.price}</span>
+              </label>
+            ))}
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={cancelAddonSelection}
+                className="flex-1 rounded-lg border border-gray-300 dark:border-gray-700 py-1.5 text-xs font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-white/5"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmAddonSelection}
+                className="flex-1 rounded-lg bg-brand-500 py-1.5 text-xs font-semibold text-white hover:bg-brand-600"
+              >
+                Add to Cart
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ── nested Category → Subcategory accordion section ─────────────────────────
+  const renderCategorySection = (tab: string) => {
+    const isOpen = openCategories.has(tab);
+    const items = itemsForCategory(tab);
+    const cartCountInTab = totalQtyForItems(items);
+    const subGroups = groupBySubcategory(items);
+    const subKeys = Object.keys(subGroups); // "" (no subcategory) first if present
+
+    return (
+      <div
+        key={tab}
+        className="rounded-xl border border-gray-200 dark:border-white/[0.07] overflow-hidden"
+      >
+        <button
+          type="button"
+          onClick={() => toggleCategory(tab)}
+          className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/[0.03] hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
+        >
+          <span className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-white/90">
+            {tab}
+            {tab === "Best Selling" && <span className="text-xs">🔥</span>}
+            <span className="text-xs font-normal text-gray-400 dark:text-gray-500">({items.length})</span>
+            {cartCountInTab > 0 && (
+              <span className="text-[10px] font-bold text-white bg-brand-500 rounded-full px-1.5 py-0.5">
+                {cartCountInTab}
+              </span>
+            )}
+          </span>
+          <ChevronDown
+            size={16}
+            className={`text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+
+        {isOpen && (
+          <div className="p-3 bg-white dark:bg-gray-900 space-y-2">
+            {items.length > 0 ? (
+              subKeys.map((sub) => {
+                // Items with no subcategory render flat, directly under the
+                // category — no subcategory accordion for these.
+                if (!sub) {
+                  return (
+                    <div key="__none__" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      {subGroups[sub].map((item) => renderItemCard(item))}
+                    </div>
+                  );
+                }
+
+                const subItems = subGroups[sub];
+                const subKey = `${tab}::${sub}`;
+                const isSubOpen = openSubcategories.has(subKey);
+                const subCartCount = totalQtyForItems(subItems);
+
+                return (
+                  <div key={subKey} className="rounded-lg border border-gray-100 dark:border-white/[0.06] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => toggleSubcategory(subKey)}
+                      className="w-full flex items-center justify-between px-3 py-2 bg-gray-50/70 dark:bg-white/[0.02] hover:bg-gray-100 dark:hover:bg-white/[0.05] transition-colors"
+                    >
+                      <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                        {sub}
+                        <span className="text-[10px] font-semibold text-gray-400 dark:text-gray-500 normal-case">
+                          ({subItems.length})
+                        </span>
+                        {subCartCount > 0 && (
+                          <span className="text-[10px] font-bold text-white bg-brand-500 rounded-full px-1.5 py-0.5 normal-case">
+                            {subCartCount}
+                          </span>
+                        )}
+                      </span>
+                      <ChevronDown
+                        size={14}
+                        className={`text-gray-400 transition-transform ${isSubOpen ? "rotate-180" : ""}`}
+                      />
+                    </button>
+                    {isSubOpen && (
+                      <div className="p-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {subItems.map((item) => renderItemCard(item))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            ) : (
+              <p className="text-sm text-gray-400 dark:text-gray-500 italic py-2">
+                No items in this category.
+              </p>
+            )}
+          </div>
+        )}
       </div>
     );
   };
@@ -328,7 +590,7 @@ export default function Orders() {
                   </div>
                 </div>
 
-                {/* ── Menu selector — search + accordion categories ── */}
+                {/* ── Menu selector — search + nested Category → Subcategory accordion ── */}
                 <div className="px-6 py-4">
                   <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Select Items</p>
 
@@ -364,51 +626,9 @@ export default function Orders() {
                       )}
                     </div>
                   ) : (
-                    /* ── Accordion by category ── */
+                    /* ── Nested accordion: Category → Subcategory → Items ── */
                     <div className="space-y-2 max-h-96 overflow-y-auto pr-1">
-                      {tabs.map((tab) => {
-                        const isOpen = resolvedActive === tab;
-                        const items = itemsForCategory(tab);
-                        const cartCountInTab = items.reduce((sum, i) => sum + (cart[i.id] || 0), 0);
-                        return (
-                          <div
-                            key={tab}
-                            className="rounded-xl border border-gray-200 dark:border-white/[0.07] overflow-hidden"
-                          >
-                            <button
-                              type="button"
-                              onClick={() => setActiveCategory(isOpen ? "" : tab)}
-                              className="w-full flex items-center justify-between px-4 py-3 bg-gray-50 dark:bg-white/[0.03] hover:bg-gray-100 dark:hover:bg-white/[0.06] transition-colors"
-                            >
-                              <span className="flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-white/90">
-                                {tab}
-                                {tab === "Best Selling" && <span className="text-xs">🔥</span>}
-                                {cartCountInTab > 0 && (
-                                  <span className="text-[10px] font-bold text-white bg-brand-500 rounded-full px-1.5 py-0.5">
-                                    {cartCountInTab}
-                                  </span>
-                                )}
-                              </span>
-                              <ChevronDown
-                                size={16}
-                                className={`text-gray-400 transition-transform ${isOpen ? "rotate-180" : ""}`}
-                              />
-                            </button>
-
-                            {isOpen && (
-                              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 p-3 bg-white dark:bg-gray-900">
-                                {items.length > 0 ? (
-                                  items.map((item) => renderItemCard(item))
-                                ) : (
-                                  <p className="col-span-full text-sm text-gray-400 dark:text-gray-500 italic py-2">
-                                    No items in this category.
-                                  </p>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        );
-                      })}
+                      {tabs.map((tab) => renderCategorySection(tab))}
                     </div>
                   )}
                 </div>
@@ -421,15 +641,20 @@ export default function Orders() {
                     </p>
                     <div className="space-y-1.5 mb-3">
                       {cartLines.map((line) => (
-                        <div key={line.menuItemId} className="flex justify-between items-center text-sm">
+                        <div key={line.key} className="flex justify-between items-start text-sm">
                           <span className="text-gray-700 dark:text-gray-300">
                             {line.name} <span className="text-gray-400">× {line.quantity}</span>
+                            {line.addons.length > 0 && (
+                              <span className="block text-xs text-gray-400 mt-0.5">
+                                + {line.addons.map((a) => a.name).join(", ")}
+                              </span>
+                            )}
                           </span>
-                          <span className="flex items-center gap-2">
-                            <span className="font-medium text-gray-800 dark:text-white/80">₹{(line.price * line.quantity).toFixed(2)}</span>
+                          <span className="flex items-center gap-2 shrink-0">
+                            <span className="font-medium text-gray-800 dark:text-white/80">₹{(line.unitPrice * line.quantity).toFixed(2)}</span>
                             <button
                               type="button"
-                              onClick={() => removeLineCompletely(line.menuItemId)}
+                              onClick={() => removeLineCompletely(line.key)}
                               className="text-gray-400 hover:text-red-500 transition-colors"
                               title="Remove from order"
                             >

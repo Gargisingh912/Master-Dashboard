@@ -5,32 +5,58 @@ import { base62ToUuid, generateOrderNumber } from "../../utils/helpers";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
 
+interface MenuAddon {
+  id: string;
+  name: string;
+  price: number;
+}
+
 interface MenuItem {
   id: string;
   name: string;
   price: number;
   category?: string;
+  subcategory?: string;
   image_url?: string;
   diet_type?: 'veg' | 'nonveg' | 'vegan';
+  addons: MenuAddon[];
 }
 
 interface CartLine {
+  key: string; // menuItemId, or menuItemId::addonId1,addonId2 for a specific add-on combo
   menu_item_id: string;
   name: string;
-  price: number;
+  basePrice: number;
+  addons: MenuAddon[];
+  unitPrice: number;
   quantity: number;
 }
+
+// A menu item with no add-ons has cart key === its own id. A menu item with
+// a specific add-on combo gets a compound key so different combos of the
+// same dish exist as separate cart lines (e.g. "Burger + Coke" vs "Burger + Fries").
+const makeCartKey = (menuItemId: string, addonIds: string[]): string =>
+  addonIds.length === 0 ? menuItemId : `${menuItemId}::${[...addonIds].sort().join(",")}`;
+
+const parseCartKey = (key: string): { menuItemId: string; addonIds: string[] } => {
+  const [menuItemId, addonPart] = key.split("::");
+  return { menuItemId, addonIds: addonPart ? addonPart.split(",") : [] };
+};
 
 const OrderPage: React.FC = () => {
   const { organizationId } = useParams<{ organizationId: string }>();
   const [orgName, setOrgName] = useState<string>("");
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [cart, setCart] = useState<Record<string, CartLine>>({});
+  const [cart, setCart] = useState<Record<string, number>>({}); // cart key -> quantity
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [authReady, setAuthReady] = useState(false);
 
-  const [activeCategory, setActiveCategory] = useState<string | null>(null);
+  // Accordion open/close state — multi-open, so several categories (and
+  // several subcategories within them) can be expanded at the same time.
+  const [openCategories, setOpenCategories] = useState<Set<string>>(new Set());
+  const [openSubcats, setOpenSubcats] = useState<Set<string>>(new Set());
+
   // Feature 9: diet filter
   const [dietFilter, setDietFilter] = useState<'all' | 'veg' | 'nonveg' | 'vegan'>('all');
 
@@ -41,6 +67,11 @@ const OrderPage: React.FC = () => {
   const [notes, setNotes] = useState("");
   const [dob, setDob] = useState<Date | null>(null);
   const [lookupDone, setLookupDone] = useState(true); // Always show fields
+
+  // Add-on picker state — which item's picker is open, and the addon ids
+  // currently checked before confirming
+  const [addonPickerItemId, setAddonPickerItemId] = useState<string | null>(null);
+  const [pendingAddonIds, setPendingAddonIds] = useState<Set<string>>(new Set());
 
   // Feature 12: coupon state
   const [couponCode, setCouponCode] = useState("");
@@ -147,7 +178,7 @@ const OrderPage: React.FC = () => {
 
       const { data: items, error: menuErr } = await supabasePublic
         .from("menu_items")
-        .select("id, name, price, category, image_url, diet_type")
+        .select("id, name, price, category, subcategory, image_url, diet_type, menu_addons(id, name, price)")
         .eq("organization_id", actualOrgId)
         .eq("is_available", true);
 
@@ -180,8 +211,10 @@ const OrderPage: React.FC = () => {
         name: item.name,
         price: item.price,
         category: item.category ?? undefined,
+        subcategory: item.subcategory ?? undefined,
         image_url: item.image_url ?? undefined,
         diet_type: item.diet_type ?? undefined,
+        addons: (item.menu_addons || []).map((a: any) => ({ id: a.id, name: a.name, price: a.price })),
       })));
       setLoading(false);
     };
@@ -219,21 +252,26 @@ const OrderPage: React.FC = () => {
     new Set(menuItems.map((m) => m.category).filter((c): c is string => !!c))
   ).sort((a, b) => getMealFlowRank(a) - getMealFlowRank(b));
 
-  const tabs: string[] = [
-    ...(bestSellingItems.length > 0 ? ["Best Selling"] : []),
-    ...userCategories,
-  ];
-
-  const resolvedCategory = activeCategory !== null && tabs.includes(activeCategory)
-    ? activeCategory
-    : tabs[0] ?? null;
-
   const grouped: Record<string, MenuItem[]> = {};
   menuItems.forEach((m) => {
     const cat = m.category || "Other";
     if (!grouped[cat]) grouped[cat] = [];
     grouped[cat].push(m);
   });
+
+  // Sub-grouping within a category. Only meaningful when a category has more
+  // than one distinct subcategory value — a single-subcategory (or
+  // subcategory-less) category renders as a flat list instead of a
+  // pointless single header.
+  const groupBySubcategory = (items: MenuItem[]): Record<string, MenuItem[]> => {
+    const g: Record<string, MenuItem[]> = {};
+    items.forEach((item) => {
+      const sub = item.subcategory || "";
+      if (!g[sub]) g[sub] = [];
+      g[sub].push(item);
+    });
+    return g;
+  };
 
   // ── Diet-first sort helper ────────────────────────────────────────────────────
   // Used only when dietFilter === 'all': veg items first, then non-veg, each
@@ -244,17 +282,14 @@ const OrderPage: React.FC = () => {
     return 2; // items with no diet_type set, sorted last
   };
 
-  const getTabItems = (tab: string | null): MenuItem[] => {
-    let items: MenuItem[];
-    if (tab === "Best Selling") items = bestSellingItems;
-    else if (tab) items = grouped[tab] || [];
-    else items = menuItems;
-
-    // Feature 9: apply diet filter
+  // Items for a given top-level category, with diet filter + diet-first sort
+  // applied (mirrors the old tab behavior, just keyed by category instead of
+  // "active tab").
+  const getCategoryItems = (cat: string): MenuItem[] => {
+    let items = grouped[cat] || [];
     if (dietFilter !== 'all') {
-      items = items.filter(m => m.diet_type === dietFilter);
-    } else if (tab !== "Best Selling") {
-      // Don't touch Best Selling's popularity ranking — only reorder regular category tabs
+      items = items.filter((m) => m.diet_type === dietFilter);
+    } else {
       items = [...items].sort((a, b) => {
         const rankDiff = getDietRank(a.diet_type) - getDietRank(b.diet_type);
         return rankDiff !== 0 ? rankDiff : a.price - b.price;
@@ -262,6 +297,42 @@ const OrderPage: React.FC = () => {
     }
     return items;
   };
+
+  // Best Selling keeps its popularity order — only the diet filter is applied.
+  const filteredBestSelling = dietFilter === 'all'
+    ? bestSellingItems
+    : bestSellingItems.filter((m) => m.diet_type === dietFilter);
+
+  // ── Accordion open/close handlers (multi-open) ───────────────────────────────
+  const toggleCategory = (cat: string) => {
+    setOpenCategories((prev) => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+
+  const toggleSubcat = (subKey: string) => {
+    setOpenSubcats((prev) => {
+      const next = new Set(prev);
+      if (next.has(subKey)) next.delete(subKey);
+      else next.add(subKey);
+      return next;
+    });
+  };
+
+  // Open the first category by default so the menu isn't fully collapsed on
+  // first load. Only runs once, when the menu first arrives.
+  useEffect(() => {
+    if (menuItems.length === 0) return;
+    setOpenCategories((prev) => {
+      if (prev.size > 0) return prev;
+      const first = bestSellingItems.length > 0 ? "Best Selling" : userCategories[0];
+      return first ? new Set([first]) : prev;
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [menuItems]);
 
   // ── Contact lookup ───────────────────────────────────────────────────────────
   const handleContactLookup = async () => {
@@ -329,29 +400,82 @@ const OrderPage: React.FC = () => {
   };
 
   // ── Cart helpers ─────────────────────────────────────────────────────────────
-  const addToCart = (item: MenuItem) => {
-    setCart((prev) => ({
-      ...prev,
-      [item.id]: {
-        menu_item_id: item.id,
-        name: item.name,
-        price: item.price,
-        quantity: (prev[item.id]?.quantity || 0) + 1,
-      },
-    }));
+  const addToCart = (key: string) => setCart((p) => ({ ...p, [key]: (p[key] || 0) + 1 }));
+
+  const removeFromCart = (key: string) =>
+    setCart((p) => {
+      if (!p[key]) return p;
+      if (p[key] <= 1) { const n = { ...p }; delete n[key]; return n; }
+      return { ...p, [key]: p[key] - 1 };
+    });
+
+  const removeLineCompletely = (key: string) =>
+    setCart((p) => {
+      const n = { ...p };
+      delete n[key];
+      return n;
+    });
+
+  // For items with add-ons: opens the picker instead of adding straight to cart
+  const handleAddClick = (item: MenuItem) => {
+    if (item.addons.length === 0) {
+      addToCart(makeCartKey(item.id, []));
+      return;
+    }
+    setAddonPickerItemId(item.id);
+    setPendingAddonIds(new Set());
   };
 
-  const removeFromCart = (itemId: string) => {
-    setCart((prev) => {
-      const existing = prev[itemId];
-      if (!existing) return prev;
-      if (existing.quantity <= 1) { const n = { ...prev }; delete n[itemId]; return n; }
-      return { ...prev, [itemId]: { ...existing, quantity: existing.quantity - 1 } };
+  const toggleAddonSelection = (addonId: string) => {
+    setPendingAddonIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(addonId)) next.delete(addonId);
+      else next.add(addonId);
+      return next;
     });
   };
 
-  const cartLines = Object.values(cart);
-  const subtotal = cartLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
+  const confirmAddonSelection = () => {
+    if (!addonPickerItemId) return;
+    addToCart(makeCartKey(addonPickerItemId, Array.from(pendingAddonIds)));
+    setAddonPickerItemId(null);
+    setPendingAddonIds(new Set());
+  };
+
+  const cancelAddonSelection = () => {
+    setAddonPickerItemId(null);
+    setPendingAddonIds(new Set());
+  };
+
+  const totalQtyForItem = (itemId: string): number =>
+    Object.entries(cart)
+      .filter(([key]) => parseCartKey(key).menuItemId === itemId)
+      .reduce((s, [, qty]) => s + qty, 0);
+
+  const resolveCartLine = (key: string, qty: number): CartLine | null => {
+    const { menuItemId, addonIds } = parseCartKey(key);
+    const item = menuItems.find((m) => m.id === menuItemId);
+    if (!item) return null;
+    const selectedAddons = addonIds
+      .map((id) => item.addons.find((a) => a.id === id))
+      .filter(Boolean) as MenuAddon[];
+    const addonTotal = selectedAddons.reduce((s, a) => s + a.price, 0);
+    return {
+      key,
+      menu_item_id: menuItemId,
+      name: item.name,
+      basePrice: item.price,
+      addons: selectedAddons,
+      unitPrice: item.price + addonTotal,
+      quantity: qty,
+    };
+  };
+
+  const cartLines = Object.entries(cart)
+    .map(([key, qty]) => resolveCartLine(key, qty))
+    .filter((l): l is CartLine => l !== null);
+
+  const subtotal = cartLines.reduce((sum, line) => sum + line.unitPrice * line.quantity, 0);
   const couponDiscountAmount = couponApplied ? (subtotal * couponDiscount) / 100 : 0;
   const total = subtotal - couponDiscountAmount;
 
@@ -457,10 +581,14 @@ const OrderPage: React.FC = () => {
         }
       }
 
+      // NOTE: selected_addons assumes an `order_items.selected_addons` jsonb
+      // column exists. If it doesn't yet, add it via migration or this
+      // insert will fail.
       const itemsPayload = cartLines.map((line) => ({
         order_id: orderPk,
         menu_item_id: line.menu_item_id,
         quantity: line.quantity,
+        selected_addons: line.addons.map((a) => ({ addon_id: a.id, name: a.name, price: a.price })),
       }));
 
       const { error: itemsError } = await supabasePublic.from("order_items").insert(itemsPayload);
@@ -533,11 +661,18 @@ const OrderPage: React.FC = () => {
                 </tr>
               </thead>
               <tbody>
-                {cartLines.map((item, idx) => (
-                  <tr key={idx} className="border-b border-gray-50">
-                    <td className="py-2 text-gray-800">{item.name}</td>
-                    <td className="py-2 text-center text-gray-600">{item.quantity}</td>
-                    <td className="py-2 text-right text-gray-800">₹{(item.price * item.quantity).toFixed(2)}</td>
+                {cartLines.map((line) => (
+                  <tr key={line.key} className="border-b border-gray-50">
+                    <td className="py-2 text-gray-800">
+                      {line.name}
+                      {line.addons.length > 0 && (
+                        <span className="block text-xs text-gray-400">
+                          + {line.addons.map((a) => a.name).join(", ")}
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-2 text-center text-gray-600">{line.quantity}</td>
+                    <td className="py-2 text-right text-gray-800">₹{(line.unitPrice * line.quantity).toFixed(2)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -591,7 +726,34 @@ const OrderPage: React.FC = () => {
   }
 
   // ── Main order page ───────────────────────────────────────────────────────────
-  const currentItems = getTabItems(resolvedCategory);
+
+  // Renders a flat list of MenuItemCards — shared by the "no subcategories"
+  // branch and the innermost level of the subcategory accordion.
+  const renderItemsList = (items: MenuItem[]) => {
+    if (items.length === 0) {
+      return <p className="text-sm text-gray-400 italic py-3 text-center">No items in this category.</p>;
+    }
+    return (
+      <div className="flex flex-col gap-3">
+        {items.map((item) => (
+          <MenuItemCard
+            key={item.id}
+            item={item}
+            totalQty={totalQtyForItem(item.id)}
+            isPickerOpen={addonPickerItemId === item.id}
+            pendingAddonIds={pendingAddonIds}
+            onAddClick={() => handleAddClick(item)}
+            onIncrement={() => addToCart(makeCartKey(item.id, []))}
+            onDecrement={() => removeFromCart(makeCartKey(item.id, []))}
+            onToggleAddon={toggleAddonSelection}
+            onConfirmAddon={confirmAddonSelection}
+            onCancelAddon={cancelAddonSelection}
+            onZoom={setZoomImage}
+          />
+        ))}
+      </div>
+    );
+  };
 
   return (
     <div className="max-w-md mx-auto bg-gray-50 min-h-screen">
@@ -619,7 +781,7 @@ const OrderPage: React.FC = () => {
         </div>
       )}
 
-      {/* Sticky header with brand name + category tabs */}
+      {/* Sticky header with brand name + diet filter */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 pt-5 pb-3">
         {orgName && (
           <h2 className="text-center text-lg font-extrabold text-gray-900 tracking-tight mb-1">
@@ -642,24 +804,6 @@ const OrderPage: React.FC = () => {
             <option value="vegan">🟣 Vegan Only</option>
           </select>
         </div>
-
-        {/* Category tab bar */}
-        {tabs.length > 0 && (
-          <div className="flex gap-2 overflow-x-auto mt-2 pb-1 -mx-1 px-1">
-            {tabs.map((tab) => (
-              <button
-                key={tab}
-                onClick={() => setActiveCategory(tab)}
-                className={`shrink-0 rounded-full px-4 py-1.5 text-sm font-semibold transition-all whitespace-nowrap ${resolvedCategory === tab
-                  ? "bg-brand-500 text-white shadow-sm"
-                  : "bg-gray-100 text-gray-600 hover:bg-gray-200"
-                  }`}
-              >
-                {tab === "Best Selling" ? "🔥 Best Selling" : tab}
-              </button>
-            ))}
-          </div>
-        )}
       </div>
 
       <div className="px-4 pt-4 pb-32">
@@ -720,20 +864,70 @@ const OrderPage: React.FC = () => {
           )}
         </div>
 
-        {/* ── Menu items ── */}
-        {tabs.length === 0 ? (
-          <div className="flex flex-col gap-3">
-            {menuItems.map((item) => (
-              <MenuItemCard key={item.id} item={item} cart={cart} onAdd={addToCart} onRemove={removeFromCart} onZoom={setZoomImage} />
-            ))}
-          </div>
+        {/* ── Menu — nested, multi-open accordion: category → subcategory → items ── */}
+        {menuItems.length === 0 ? (
+          <p className="text-sm text-gray-400 italic py-8 text-center">No menu items available.</p>
         ) : (
-          <div className="flex flex-col gap-3">
-            {currentItems.length > 0 ? currentItems.map((item) => (
-              <MenuItemCard key={item.id} item={item} cart={cart} onAdd={addToCart} onRemove={removeFromCart} onZoom={setZoomImage} />
-            )) : (
-              <p className="text-sm text-gray-400 italic py-4 text-center">No items in this category.</p>
+          <div className="flex flex-col divide-y divide-gray-100 bg-white border border-gray-200 rounded-xl shadow-theme-xs overflow-hidden">
+            {/* Best Selling — flat, no subcategory nesting so popularity order stays intact */}
+            {filteredBestSelling.length > 0 && (
+              <div>
+                <CategoryHeader
+                  label="🔥 Best Selling"
+                  count={filteredBestSelling.length}
+                  isOpen={openCategories.has("Best Selling")}
+                  onClick={() => toggleCategory("Best Selling")}
+                />
+                {openCategories.has("Best Selling") && (
+                  <div className="px-4 pb-4">{renderItemsList(filteredBestSelling)}</div>
+                )}
+              </div>
             )}
+
+            {userCategories.map((cat) => {
+              const items = getCategoryItems(cat);
+              const subGroups = groupBySubcategory(items);
+              const subKeys = Object.keys(subGroups);
+              const isOpen = openCategories.has(cat);
+
+              return (
+                <div key={cat}>
+                  <CategoryHeader
+                    label={cat}
+                    count={items.length}
+                    isOpen={isOpen}
+                    onClick={() => toggleCategory(cat)}
+                  />
+                  {isOpen && (
+                    <div className="px-4 pb-4">
+                      {subKeys.length <= 1 ? (
+                        renderItemsList(items)
+                      ) : (
+                        <div className="flex flex-col divide-y divide-gray-50 border-l-2 border-gray-100 pl-2">
+                          {Object.entries(subGroups).map(([sub, subItems]) => {
+                            const subKey = `${cat}::${sub || "__none__"}`;
+                            const subOpen = openSubcats.has(subKey);
+                            return (
+                              <div key={subKey}>
+                                <SubcategoryHeader
+                                  label={sub || "Other"}
+                                  count={subItems.length}
+                                  isOpen={subOpen}
+                                  onClick={() => toggleSubcat(subKey)}
+                                />
+                                {subOpen && (
+                                  <div className="pl-3 pb-3">{renderItemsList(subItems)}</div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         )}
       </div>
@@ -742,6 +936,32 @@ const OrderPage: React.FC = () => {
       {cartLines.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 z-50">
           <div className="max-w-md mx-auto p-4">
+            {/* Itemized cart lines — needed now that add-ons can make the
+                same dish show up as multiple distinct lines */}
+            <div className="mb-3 max-h-32 overflow-y-auto flex flex-col gap-1">
+              {cartLines.map((line) => (
+                <div key={line.key} className="flex justify-between items-start text-xs text-gray-600">
+                  <span className="min-w-0">
+                    {line.name} × {line.quantity}
+                    {line.addons.length > 0 && (
+                      <span className="block text-[11px] text-gray-400 truncate">
+                        + {line.addons.map((a) => a.name).join(", ")}
+                      </span>
+                    )}
+                  </span>
+                  <span className="flex items-center gap-2 shrink-0">
+                    ₹{(line.unitPrice * line.quantity).toFixed(2)}
+                    <button
+                      onClick={() => removeLineCompletely(line.key)}
+                      className="text-red-500 hover:text-red-700 font-bold"
+                    >
+                      ✕
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+
             {/* Feature 12: Coupon code input */}
             <div className="mb-3">
               {couponApplied ? (
@@ -807,54 +1027,160 @@ const DietDot = ({ type }: { type?: string }) => {
   return null;
 };
 
+// ── Accordion headers ────────────────────────────────────────────────────────
+// Top-level category row. Shows the item count and a +/− toggle, matching
+// the multi-open behavior of the reference design (several categories, and
+// several subcategories within them, can be expanded at once).
+const CategoryHeader: React.FC<{
+  label: string;
+  count: number;
+  isOpen: boolean;
+  onClick: () => void;
+}> = ({ label, count, isOpen, onClick }) => (
+  <button
+    onClick={onClick}
+    className="w-full flex items-center justify-between py-3.5 px-4 text-left"
+  >
+    <span className="font-bold text-gray-800">{label}</span>
+    <span className="flex items-center gap-3">
+      <span className="text-sm font-semibold text-gray-400">{count}</span>
+      <span
+        className={`w-6 h-6 flex items-center justify-center rounded-full text-sm font-bold transition-colors ${
+          isOpen ? "bg-brand-500 text-white" : "bg-gray-100 text-gray-500"
+        }`}
+      >
+        {isOpen ? "−" : "+"}
+      </span>
+    </span>
+  </button>
+);
+
+// Nested subcategory row, indented under its open parent category.
+const SubcategoryHeader: React.FC<{
+  label: string;
+  count: number;
+  isOpen: boolean;
+  onClick: () => void;
+}> = ({ label, count, isOpen, onClick }) => (
+  <button
+    onClick={onClick}
+    className="w-full flex items-center justify-between py-2.5 pl-3 pr-2 text-left"
+  >
+    <span className="text-sm font-semibold text-gray-600">{label}</span>
+    <span className="flex items-center gap-2">
+      <span className="text-xs font-medium text-gray-400">{count}</span>
+      <span
+        className={`w-5 h-5 flex items-center justify-center rounded-full text-xs font-bold transition-colors ${
+          isOpen ? "bg-brand-50 text-brand-500" : "bg-gray-50 text-gray-400"
+        }`}
+      >
+        {isOpen ? "−" : "+"}
+      </span>
+    </span>
+  </button>
+);
+
 // ── MenuItemCard ──────────────────────────────────────────────────────────────
 function MenuItemCard({
   item,
-  cart,
-  onAdd,
-  onRemove,
+  totalQty,
+  isPickerOpen,
+  pendingAddonIds,
+  onAddClick,
+  onIncrement,
+  onDecrement,
+  onToggleAddon,
+  onConfirmAddon,
+  onCancelAddon,
   onZoom,
 }: {
   item: MenuItem;
-  cart: Record<string, CartLine>;
-  onAdd: (item: MenuItem) => void;
-  onRemove: (id: string) => void;
+  totalQty: number;
+  isPickerOpen: boolean;
+  pendingAddonIds: Set<string>;
+  onAddClick: () => void;
+  onIncrement: () => void;
+  onDecrement: () => void;
+  onToggleAddon: (addonId: string) => void;
+  onConfirmAddon: () => void;
+  onCancelAddon: () => void;
   onZoom: (url: string) => void;
 }) {
+  const hasAddons = item.addons.length > 0;
+
   return (
-    <div className="flex justify-between items-center bg-white border border-gray-200 rounded-xl p-4 shadow-theme-xs transition-transform hover:scale-[1.01]">
-      <div className="flex items-center gap-4">
-        {/* Feature 7: clicking image opens zoom modal */}
-        {item.image_url && (
-          <div
-            className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-gray-100 cursor-zoom-in relative group"
-            onClick={() => onZoom(item.image_url!)}
-          >
-            <img src={item.image_url} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
-            <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+    <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-theme-xs transition-transform hover:scale-[1.01]">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-4">
+          {/* Feature 7: clicking image opens zoom modal */}
+          {item.image_url && (
+            <div
+              className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-gray-100 cursor-zoom-in relative group"
+              onClick={() => onZoom(item.image_url!)}
+            >
+              <img src={item.image_url} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              </div>
             </div>
+          )}
+          <div>
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <DietDot type={item.diet_type} />
+              <p className="font-semibold text-gray-800">{item.name}</p>
+            </div>
+            <p className="text-sm font-medium text-brand-500 mt-0.5">₹{item.price.toFixed(2)}</p>
+            {hasAddons && (
+              <p className="text-xs text-gray-400 mt-0.5">
+                {item.addons.length} add-on{item.addons.length !== 1 ? "s" : ""} available
+              </p>
+            )}
           </div>
-        )}
-        <div>
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <DietDot type={item.diet_type} />
-            <p className="font-semibold text-gray-800">{item.name}</p>
-          </div>
-          <p className="text-sm font-medium text-brand-500 mt-0.5">₹{item.price.toFixed(2)}</p>
+        </div>
+        <div className="flex items-center gap-3 bg-gray-50 rounded-full p-1 border border-gray-100 shrink-0">
+          {!hasAddons && totalQty > 0 ? (
+            <>
+              <button onClick={onDecrement} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-gray-600 shadow-xs hover:bg-gray-50 transition-colors">−</button>
+              <span className="w-6 text-center font-semibold text-gray-800">{totalQty}</span>
+              <button onClick={onIncrement} className="w-8 h-8 flex items-center justify-center rounded-full bg-brand-500 text-white shadow-xs hover:bg-brand-600 transition-colors">+</button>
+            </>
+          ) : (
+            <button onClick={onAddClick} className="px-4 py-1.5 rounded-full bg-brand-50 text-brand-600 font-medium text-sm hover:bg-brand-100 transition-colors">
+              {totalQty > 0 ? `+ (${totalQty})` : "Add"}
+            </button>
+          )}
         </div>
       </div>
-      <div className="flex items-center gap-3 bg-gray-50 rounded-full p-1 border border-gray-100 shrink-0">
-        {cart[item.id] ? (
-          <>
-            <button onClick={() => onRemove(item.id)} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-gray-600 shadow-xs hover:bg-gray-50 transition-colors">−</button>
-            <span className="w-6 text-center font-semibold text-gray-800">{cart[item.id].quantity}</span>
-            <button onClick={() => onAdd(item)} className="w-8 h-8 flex items-center justify-center rounded-full bg-brand-500 text-white shadow-xs hover:bg-brand-600 transition-colors">+</button>
-          </>
-        ) : (
-          <button onClick={() => onAdd(item)} className="px-4 py-1.5 rounded-full bg-brand-50 text-brand-600 font-medium text-sm hover:bg-brand-100 transition-colors">Add</button>
-        )}
-      </div>
+
+      {/* Add-on picker — only rendered for the item currently being configured */}
+      {isPickerOpen && (
+        <div className="mt-3 pt-3 border-t border-gray-100">
+          <p className="text-xs font-semibold text-gray-700 mb-2">Choose add-ons</p>
+          <div className="flex flex-col gap-2">
+            {item.addons.map((addon) => (
+              <label key={addon.id} className="flex justify-between items-center text-sm cursor-pointer">
+                <span className="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    checked={pendingAddonIds.has(addon.id)}
+                    onChange={() => onToggleAddon(addon.id)}
+                  />
+                  {addon.name}
+                </span>
+                <span className="text-gray-500">+₹{addon.price}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={onCancelAddon} className="flex-1 rounded-lg bg-gray-100 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-200">
+              Cancel
+            </button>
+            <button onClick={onConfirmAddon} className="flex-1 rounded-lg bg-brand-500 py-2 text-sm font-semibold text-white hover:bg-brand-600">
+              Add to Cart
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
