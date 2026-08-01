@@ -34,6 +34,12 @@ export interface OrderItem {
 
 export interface Order {
   id: string;
+  // Human-readable order code (DB column: orders.order_id). Only ever set
+  // for QR/self-serve orders — the walk-in/manual order flow (addOrder
+  // below) never populates this column, so it stays NULL in the DB and
+  // undefined here. Use this to distinguish QR orders from live/walk-in
+  // orders anywhere in the UI (e.g. the Incoming QR Orders KPI).
+  orderCode?: string;
   customer: {
     name: string;
     contact?: string;
@@ -206,6 +212,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       if (ordersError) console.error("Orders fetch error:", ordersError);
       const fetchedOrders: Order[] = (ordersData || []).map((o: any) => ({
         id: o.id,
+        orderCode: o.order_id ?? undefined,
         customer: {
           name: o.customer_name,
           contact: o.customer_contact,
@@ -359,6 +366,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
             .eq('order_id', r.id);
           const newOrder: Order = {
             id: r.id,
+            orderCode: r.order_id ?? undefined,
             customer: { name: r.customer_name, contact: r.customer_contact, email: r.customer_email, dob: r.customer_dob },
             items: (oi || []).map((o: any) => ({ menuItemId: o.menu_item_id, quantity: o.quantity })),
             subtotal: r.total,
@@ -728,6 +736,10 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
 
     const total = subtotal - (subtotal * discount) / 100;
 
+    // NOTE: `order_id` (the human-readable QR order code) is intentionally
+    // NOT set here — this is the walk-in/manual order path. Leaving it
+    // NULL is what lets the rest of the app (DB trigger, alarm, Incoming
+    // QR Orders widget) tell walk-in orders apart from QR orders.
     const { data: orderData, error: orderError } = await supabase.from('orders').insert({
       organization_id: orgId,
       customer_name: customerName,
@@ -762,6 +774,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     setOrders(prev => [
       {
         id: orderData.id,
+        orderCode: orderData.order_id ?? undefined,
         customer: { name: customerName, contact, email, dob },
         items,
         subtotal,

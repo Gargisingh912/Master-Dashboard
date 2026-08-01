@@ -1,6 +1,5 @@
 import { useEffect, useState } from "react";
 import { ThemeToggleButton } from "../components/common/ThemeToggleButton";
-import NotificationDropdown from "../components/header/NotificationDropdown";
 import UserDropdown from "../components/header/UserDropdown";
 import { Link } from "react-router";
 import { supabase } from "../config/supabase";
@@ -13,7 +12,6 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onClick, onToggle }) => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
   const [kitchenName, setKitchenName] = useState<string>("");
-  const [organizationId, setOrganizationId] = useState<string | null>(null);
   const [silent, setSilent] = useState(isSilentMode());
 
   useEffect(() => {
@@ -34,8 +32,6 @@ const Header: React.FC<HeaderProps> = ({ onClick, onToggle }) => {
         console.error("Error fetching profile:", profileError);
         return;
       }
-
-      setOrganizationId(profileData.organization_id);
 
       const { data: orgData, error: orgError } = await supabase
         .from("organizations")
@@ -156,7 +152,10 @@ const Header: React.FC<HeaderProps> = ({ onClick, onToggle }) => {
             } items-center justify-between w-full gap-4 px-5 py-4 lg:flex shadow-theme-md lg:justify-end lg:px-0 lg:shadow-none`}
         >
           <div className="flex items-center gap-2 2xsm:gap-3">
-            {/* Silent Mode Toggle — mutes audio but keeps vibration */}
+            {/* Silent Mode Toggle — mutes audio but keeps vibration. Now
+                controls the alarm rung by the Incoming QR Orders KPI on
+                the Overview page rather than the (removed) notification
+                dropdown. */}
             <button
               onClick={() => {
                 const next = !silent;
@@ -190,7 +189,6 @@ const Header: React.FC<HeaderProps> = ({ onClick, onToggle }) => {
               )}
             </button>
             <ThemeToggleButton />
-            <NotificationDropdown organizationId={organizationId} />
           </div>
           <UserDropdown />
         </div>

@@ -2,6 +2,7 @@ import EcommerceMetrics from "../../components/ecommerce/EcommerceMetrics";
 import StatisticsChart from "../../components/ecommerce/StatisticsChart";
 import MonthlyTarget from "../../components/ecommerce/MonthlyTarget";
 import HighestSellingDishes from "../../components/ecommerce/HighestSellingDishes";
+import IncomingQrOrders from "../../components/ecommerce/Incomingqrorders";
 import PageMeta from "../../components/common/PageMeta";
 
 export default function Home() {
@@ -12,6 +13,10 @@ export default function Home() {
         description="one stop solution for your data operations"
       />
       <div className="grid grid-cols-12 gap-4 md:gap-6">
+        <div className="col-span-12">
+          <IncomingQrOrders />
+        </div>
+
         <div className="col-span-12 space-y-6 xl:col-span-7">
           <EcommerceMetrics />
         </div>
