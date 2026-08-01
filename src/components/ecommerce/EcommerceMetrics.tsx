@@ -1,3 +1,4 @@
+import { Link } from "react-router";
 import { BoxIconLine } from "../../icons";
 import { useKitchen, MenuIngredient } from "../../context/KitchenContext";
 import { CardSkeleton } from "../ui/skeleton/Skeleton";
@@ -40,9 +41,17 @@ export default function EcommerceMetrics() {
 
   return (
     <div className="space-y-4 md:space-y-6">
-      {/* 1. Live Order Status KPI on Top */}
-      <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90 mb-4">Live Order Status</h4>
+      {/* 1. Live Order Status KPI on Top — clickable, routes to the Orders page */}
+      <Link
+        to="/orders-tables"
+        className="block rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6 transition-colors hover:border-brand-300 hover:shadow-theme-sm dark:hover:border-brand-500/40"
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h4 className="text-sm font-semibold text-gray-800 dark:text-white/90">Live Order Status</h4>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-gray-400">
+            <path d="M9 18l6-6-6-6" />
+          </svg>
+        </div>
         <div className="grid grid-cols-3 gap-4 text-center">
           <div className="rounded-xl bg-gray-50 p-4 dark:bg-white/5">
             <span className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wider">Placed</span>
@@ -57,7 +66,7 @@ export default function EcommerceMetrics() {
             <p className="mt-1 text-2xl font-bold text-success-700 dark:text-success-300">{deliveredCount}</p>
           </div>
         </div>
-      </div>
+      </Link>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 md:gap-6">
         {/* 2. Inventory KPI below, beside Today's Orders */}
