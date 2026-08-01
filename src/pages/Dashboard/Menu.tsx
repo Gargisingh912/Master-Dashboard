@@ -50,10 +50,10 @@ function IngredientEditor({
   };
 
   return (
-    <div>
-      <div className="flex justify-between items-center mb-2">
+    <div className="w-full min-w-0">
+      <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
         <label className="block text-sm font-medium text-gray-700 dark:text-gray-300">Ingredients</label>
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
           <button
             type="button"
             onClick={() => setShowQuickAdd(!showQuickAdd)}
@@ -115,11 +115,11 @@ function IngredientEditor({
       )}
 
       {ingredients.map((ing, index) => (
-        <div key={index} className="flex gap-4 items-center mb-2">
+        <div key={index} className="flex flex-wrap gap-2 items-center mb-2 w-full min-w-0">
           <select
             value={ing.inventoryId}
             onChange={(e) => onUpdate(index, "inventoryId", e.target.value)}
-            className="flex-1 rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+            className="min-w-0 flex-1 basis-32 rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
           >
             {inventory.map((item) => (
               <option key={item.id} value={item.id}>
@@ -127,12 +127,12 @@ function IngredientEditor({
               </option>
             ))}
           </select>
-          <div className="relative flex items-center">
+          <div className="relative flex items-center shrink-0">
             <input
               type="number"
               value={ing.quantity || ""}
               onChange={(e) => onUpdate(index, "quantity", e.target.value)}
-              className="w-24 rounded-lg rounded-r-none border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              className="w-16 rounded-lg rounded-r-none border border-gray-300 px-2 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               min="0"
               step="0.01"
               placeholder="Qty"
@@ -140,7 +140,7 @@ function IngredientEditor({
             <select
               value={ing.unit || inventory.find((i) => i.id === ing.inventoryId)?.unit || "kg"}
               onChange={(e) => onUpdate(index, "unit", e.target.value)}
-              className="w-28 rounded-lg rounded-l-none border border-l-0 border-gray-300 px-3 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:text-white/90 bg-gray-50 dark:bg-gray-800"
+              className="w-20 rounded-lg rounded-l-none border border-l-0 border-gray-300 px-1.5 py-2 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:text-white/90 bg-gray-50 dark:bg-gray-800"
             >
               <option value="kg">kg</option>
               <option value="g">gram</option>
@@ -153,7 +153,7 @@ function IngredientEditor({
           <button
             type="button"
             onClick={() => onRemove(index)}
-            className="text-red-500 hover:text-red-700"
+            className="text-red-500 hover:text-red-700 text-sm shrink-0"
           >
             Remove
           </button>
@@ -372,6 +372,13 @@ export default function Menu() {
     setEditIngredients(editIngredients.filter((_, i) => i !== index));
   };
 
+  // Diet type is applied to local edit state immediately on click; the visible
+  // badge on the card only updates once the whole edit is saved (same as
+  // name/price/category), since all fields save together via updateMenuItem.
+  const handleEditDietTypeChange = (value: 'veg' | 'nonveg' | 'vegan' | '') => {
+    setEditDietType(value);
+  };
+
   const handleSaveEdit = (id: string) => {
     if (!editName || !editPrice) return;
 
@@ -548,10 +555,13 @@ export default function Menu() {
             const isEditing = editingId === item.id;
 
             return (
-              <div key={item.id} className="rounded-xl border border-gray-200 bg-white p-6 dark:border-white/[0.05] dark:bg-white/[0.03]">
+              <div
+                key={item.id}
+                className="rounded-xl border border-gray-200 bg-white p-6 dark:border-white/[0.05] dark:bg-white/[0.03] min-w-0 overflow-hidden"
+              >
                 {isEditing ? (
-                  <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="space-y-4 w-full min-w-0">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
                         <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Name</label>
                         <input
@@ -584,14 +594,34 @@ export default function Menu() {
                         />
                       </div>
                       <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Diet Type</label>
+                        <select
+                          value={editDietType}
+                          onChange={(e) => handleEditDietTypeChange(e.target.value as any)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                        >
+                          <option value="">Not specified</option>
+                          <option value="veg">🟢 Veg</option>
+                          <option value="nonveg">🔴 Non-Veg</option>
+                          <option value="vegan">🟣 Vegan</option>
+                        </select>
+                      </div>
+                      <div className="sm:col-span-2">
                         <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Image</label>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleImageUpload(e, true)}
-                          disabled={isUploading}
-                          className="w-full text-sm text-gray-500 file:mr-4 file:py-1.5 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-500/10 dark:file:text-brand-400 disabled:opacity-50"
-                        />
+                        <div className="flex items-center gap-3">
+                          {editImageUrl && (
+                            <div className="h-9 w-9 shrink-0 overflow-hidden rounded bg-gray-100">
+                              <img src={editImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                            </div>
+                          )}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            onChange={(e) => handleImageUpload(e, true)}
+                            disabled={isUploading}
+                            className="min-w-0 flex-1 text-xs text-gray-500 file:mr-3 file:py-1.5 file:px-3 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-brand-50 file:text-brand-700 hover:file:bg-brand-100 dark:file:bg-brand-500/10 dark:file:text-brand-400 disabled:opacity-50"
+                          />
+                        </div>
                       </div>
                     </div>
 

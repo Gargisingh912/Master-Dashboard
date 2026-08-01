@@ -8,6 +8,7 @@ const EMPTY_FORM = {
   code: "",
   discount_percent: 10,
   max_uses: "" as string | number,
+  min_order_value: "" as string | number,   // NEW — "" reads as no minimum
   valid_from: new Date().toISOString(),
   valid_to: null as string | null,
   is_active: true,
@@ -34,13 +35,14 @@ export default function DiscountCoupons() {
   const startEdit = (coupon: DiscountCoupon) => {
     setEditingId(coupon.id);
     setForm({
-      code: coupon.code,
-      discount_percent: coupon.discount_percent,
-      max_uses: coupon.max_uses ?? "",
-      valid_from: coupon.valid_from,
-      valid_to: coupon.valid_to,
-      is_active: coupon.is_active,
-    });
+  code: coupon.code,
+  discount_percent: coupon.discount_percent,
+  max_uses: coupon.max_uses ?? "",
+  min_order_value: coupon.min_order_value ? coupon.min_order_value : "",   // NEW
+  valid_from: coupon.valid_from,
+  valid_to: coupon.valid_to,
+  is_active: coupon.is_active,
+});
     setValidFromDate(new Date(coupon.valid_from));
     setValidToDate(coupon.valid_to ? new Date(coupon.valid_to) : null);
     setShowForm(true);
@@ -50,13 +52,14 @@ export default function DiscountCoupons() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const payload = {
-      code: form.code.toUpperCase().trim(),
-      discount_percent: Number(form.discount_percent),
-      max_uses: form.max_uses === "" ? null : Number(form.max_uses),
-      valid_from: validFromDate.toISOString(),
-      valid_to: validToDate ? validToDate.toISOString() : null,
-      is_active: form.is_active,
-    };
+  code: form.code.toUpperCase().trim(),
+  discount_percent: Number(form.discount_percent),
+  max_uses: form.max_uses === "" ? null : Number(form.max_uses),
+  min_order_value: form.min_order_value === "" ? 0 : Number(form.min_order_value),   // NEW
+  valid_from: validFromDate.toISOString(),
+  valid_to: validToDate ? validToDate.toISOString() : null,
+  is_active: form.is_active,
+};
 
     if (editingId) {
       await updateCoupon(editingId, payload);
@@ -166,6 +169,23 @@ export default function DiscountCoupons() {
                 className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white/90"
               />
             </div>
+            {/* Min Order Value */}
+<div>
+  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+    Minimum Order Value <span className="text-gray-400 font-normal">(leave blank = no minimum)</span>
+  </label>
+  <div className="relative">
+    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 text-sm">₹</span>
+    <input
+      type="number"
+      min={0}
+      value={form.min_order_value}
+      onChange={(e) => setForm({ ...form, min_order_value: e.target.value })}
+      placeholder="0"
+      className="w-full rounded-lg border border-gray-300 pl-7 pr-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-none dark:border-gray-700 dark:bg-gray-800 dark:text-white/90"
+    />
+  </div>
+</div>
 
             {/* Valid From */}
             <div>
@@ -323,6 +343,7 @@ export default function DiscountCoupons() {
                       <span>Never</span>
                     )}
                   </div>
+                  
                 </div>
 
                 {/* Usage bar */}

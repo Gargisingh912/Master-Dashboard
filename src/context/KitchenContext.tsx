@@ -63,6 +63,7 @@ export interface DiscountCoupon {
   discount_percent: number;
   max_uses: number | null;
   used_count: number;
+  min_order_value: number;
   valid_from: string;
   valid_to: string | null;
   is_active: boolean;
@@ -253,6 +254,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         discount_percent: c.discount_percent,
         max_uses: c.max_uses,
         used_count: c.used_count,
+        min_order_value: c.min_order_value ?? 0,
         valid_from: c.valid_from,
         valid_to: c.valid_to,
         is_active: c.is_active,
@@ -438,7 +440,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         { event: 'INSERT', schema: 'public', table: 'discount_coupons', filter: `organization_id=eq.${orgId}` },
         (payload) => {
           const r = payload.new as any;
-          const newCoupon: DiscountCoupon = { id: r.id, code: r.code, discount_percent: r.discount_percent, max_uses: r.max_uses, used_count: r.used_count, valid_from: r.valid_from, valid_to: r.valid_to, is_active: r.is_active, created_at: r.created_at };
+          const newCoupon: DiscountCoupon = { id: r.id, code: r.code, discount_percent: r.discount_percent, max_uses: r.max_uses, used_count: r.used_count, min_order_value: r.min_order_value ?? 0, valid_from: r.valid_from, valid_to: r.valid_to, is_active: r.is_active, created_at: r.created_at };
           setCoupons(prev => {
             if (prev.find(c => c.id === r.id)) return prev;
             return [newCoupon, ...prev];
@@ -450,7 +452,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         { event: 'UPDATE', schema: 'public', table: 'discount_coupons', filter: `organization_id=eq.${orgId}` },
         (payload) => {
           const r = payload.new as any;
-          setCoupons(prev => prev.map(c => c.id === r.id ? { ...c, code: r.code, discount_percent: r.discount_percent, max_uses: r.max_uses, used_count: r.used_count, valid_from: r.valid_from, valid_to: r.valid_to, is_active: r.is_active } : c));
+          setCoupons(prev => prev.map(c => c.id === r.id ? { ...c, code: r.code, discount_percent: r.discount_percent, max_uses: r.max_uses, used_count: r.used_count, min_order_value: r.min_order_value ?? 0, valid_from: r.valid_from, valid_to: r.valid_to, is_active: r.is_active } : c));
         }
       )
       .on(
@@ -932,6 +934,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       code: coupon.code.toUpperCase().trim(),
       discount_percent: coupon.discount_percent,
       max_uses: coupon.max_uses ?? null,
+      min_order_value: coupon.min_order_value ?? 0,
       valid_from: coupon.valid_from,
       valid_to: coupon.valid_to ?? null,
       is_active: coupon.is_active,
@@ -945,6 +948,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     if (updates.code !== undefined) payload.code = updates.code.toUpperCase().trim();
     if (updates.discount_percent !== undefined) payload.discount_percent = updates.discount_percent;
     if (updates.max_uses !== undefined) payload.max_uses = updates.max_uses;
+    if (updates.min_order_value !== undefined) payload.min_order_value = updates.min_order_value;
     if (updates.valid_from !== undefined) payload.valid_from = updates.valid_from;
     if (updates.valid_to !== undefined) payload.valid_to = updates.valid_to;
     if (updates.is_active !== undefined) payload.is_active = updates.is_active;

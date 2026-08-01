@@ -48,6 +48,7 @@ const OrderPage: React.FC = () => {
   const [couponError, setCouponError] = useState("");
   const [couponApplied, setCouponApplied] = useState(false);
   const [couponId, setCouponId] = useState<string | null>(null);
+  const [couponMinOrder, setCouponMinOrder] = useState(0);
 
   // Feature 7: image zoom
   const [zoomImage, setZoomImage] = useState<string | null>(null);
@@ -247,7 +248,7 @@ const OrderPage: React.FC = () => {
 
     const { data, error } = await supabasePublic
       .from("discount_coupons")
-      .select("id, code, discount_percent, max_uses, used_count, valid_from, valid_to, is_active")
+      .select("id, code, discount_percent, max_uses, used_count, min_order_value, valid_from, valid_to, is_active")
       .eq("organization_id", actualOrgId)
       .eq("code", couponInput.trim().toUpperCase())
       .maybeSingle();
@@ -259,10 +260,16 @@ const OrderPage: React.FC = () => {
     if (data.valid_from && new Date(data.valid_from) > now) { setCouponError("This coupon is not yet active."); return; }
     if (data.valid_to && new Date(data.valid_to) < now) { setCouponError("This coupon has expired."); return; }
 
+    if (data.min_order_value && subtotal < data.min_order_value) {
+      setCouponError(`Add ₹${(data.min_order_value - subtotal).toFixed(2)} more to use this coupon (min. order ₹${data.min_order_value}).`);
+      return;
+    }
+
     setCouponCode(data.code);
     setCouponDiscount(data.discount_percent);
     setCouponApplied(true);
     setCouponId(data.id);
+    setCouponMinOrder(data.min_order_value || 0);
   };
 
   const handleRemoveCoupon = () => {
@@ -272,6 +279,7 @@ const OrderPage: React.FC = () => {
     setCouponApplied(false);
     setCouponId(null);
     setCouponError("");
+    setCouponMinOrder(0);
   };
 
   // ── Cart helpers ─────────────────────────────────────────────────────────────
@@ -300,6 +308,14 @@ const OrderPage: React.FC = () => {
   const subtotal = cartLines.reduce((sum, line) => sum + line.price * line.quantity, 0);
   const couponDiscountAmount = couponApplied ? (subtotal * couponDiscount) / 100 : 0;
   const total = subtotal - couponDiscountAmount;
+
+  // ── Auto-remove coupon if cart falls below its minimum order value ───────────
+  useEffect(() => {
+    if (couponApplied && couponMinOrder > 0 && subtotal < couponMinOrder) {
+      handleRemoveCoupon();
+      setCouponError(`Coupon removed — order fell below the ₹${couponMinOrder} minimum.`);
+    }
+  }, [subtotal]);
 
   // ── Submit order ─────────────────────────────────────────────────────────────
   const handleSubmitOrder = async () => {
