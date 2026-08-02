@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import { supabase } from "../../config/supabase";
 import { useKitchen, MenuIngredient, MenuAddon } from "../../context/KitchenContext";
+import { getMealFlowRank, getDietRank } from "../../utils/helpers";
 import { Trash2 } from "lucide-react";
 
 interface IngredientRow {
@@ -324,7 +325,7 @@ export default function Menu() {
   const existingCategories = useMemo(() => {
     const cats = new Set<string>();
     menu.forEach((m) => { if (m.category) cats.add(m.category); });
-    return Array.from(cats);
+    return Array.from(cats).sort((a, b) => getMealFlowRank(a) - getMealFlowRank(b));
   }, [menu]);
 
   // category -> its distinct subcategories, so the subcategory input/datalist
@@ -369,7 +370,12 @@ export default function Menu() {
     if (activeSubFilter !== "All") {
       items = items.filter((m) => m.subcategory === activeSubFilter);
     }
-    return items;
+    
+    // Sort items by diet type, then by price
+    return [...items].sort((a, b) => {
+      const rankDiff = getDietRank(a.diet_type as string) - getDietRank(b.diet_type as string);
+      return rankDiff !== 0 ? rankDiff : a.price - b.price;
+    });
   }, [menu, activeFilter, activeSubFilter]);
 
   const getCategoryColour = useCategoryColour(existingCategories);

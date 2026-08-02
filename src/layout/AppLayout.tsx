@@ -1,33 +1,25 @@
-import { SidebarProvider, useSidebar } from "../context/SidebarContext";
 import { Outlet } from "react-router";
-import AppHeader from "./AppHeader";
-import Backdrop from "./Backdrop";
-import AppSidebar from "./AppSidebar";
+import FloatingNav from "./FloatingNav";
 import TrialBanner from "../layout/TrialBanner";
 import { useAuth } from "../hooks/useAuth";
 import ErrorBoundary from "../components/common/ErrorBoundary";
 
 const LayoutContent: React.FC = () => {
-  const { isExpanded, isHovered, isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
   const { plan, trialEnds } = useAuth();
 
   return (
-    <div className="min-h-screen xl:flex">
-      <div>
-        <AppSidebar />
-        <Backdrop />
-      </div>
-      <div
-        className={`flex-1 transition-all duration-300 ease-in-out ${
-          isExpanded || isHovered ? "lg:ml-[290px]" : "lg:ml-[90px]"
-        } ${isMobileOpen ? "ml-0" : ""}`}
-      >
-        <AppHeader onClick={toggleSidebar} onToggle={toggleMobileSidebar} />
-        <TrialBanner plan={plan} trialEnds={trialEnds} />
-        <div className="p-4 mx-auto max-w-(--breakpoint-2xl) md:p-6">
-          <ErrorBoundary>
-            <Outlet />
-          </ErrorBoundary>
+    // ── Global Background Matching the Image ──
+    <div className="min-h-screen font-sans text-gray-900 dark:text-gray-100 bg-gradient-to-br from-indigo-50 via-white to-pink-50 dark:from-[#2a1b3d] dark:via-[#1a1525] dark:to-[#120f18]">
+      <FloatingNav />
+      <div className="flex-1 transition-all duration-300 ease-in-out">
+        {/* Padding for desktop left nav, padding for mobile bottom nav */}
+        <div className="pt-4 lg:pt-6 lg:pl-32 pb-28 lg:pb-8 pr-4 lg:pr-8">
+          <TrialBanner plan={plan} trialEnds={trialEnds} />
+          <div className="mx-auto max-w-(--breakpoint-2xl)">
+            <ErrorBoundary>
+              <Outlet />
+            </ErrorBoundary>
+          </div>
         </div>
       </div>
     </div>
@@ -35,11 +27,7 @@ const LayoutContent: React.FC = () => {
 };
 
 const AppLayout: React.FC = () => {
-  return (
-    <SidebarProvider>
-      <LayoutContent />
-    </SidebarProvider>
-  );
+  return <LayoutContent />;
 };
 
 export default AppLayout;

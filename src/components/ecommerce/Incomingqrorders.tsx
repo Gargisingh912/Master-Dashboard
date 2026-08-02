@@ -48,7 +48,7 @@ export default function IncomingQrOrders() {
   };
 
   return (
-    <div className="rounded-2xl border border-brand-200 bg-brand-50/40 p-5 dark:border-brand-500/30 dark:bg-brand-500/5">
+    <div className="bento-glass p-5 border-brand-300 dark:border-brand-500/40">
       <div className="flex items-center justify-between mb-4">
         <h3 className="text-lg font-bold text-gray-800 dark:text-white/90">
           Incoming QR Orders
@@ -62,7 +62,7 @@ export default function IncomingQrOrders() {
         {pendingQrOrders.map((order, idx) => (
           <div
             key={order.id}
-            className="rounded-xl border border-gray-200 bg-white p-4 dark:border-white/[0.05] dark:bg-white/[0.03] min-w-0"
+            className="rounded-xl border border-gray-200/50 bg-white/40 p-4 dark:border-white/10 dark:bg-black/20 min-w-0"
           >
             <div className="flex justify-between items-start mb-2 gap-2">
               <div className="min-w-0">

@@ -371,3 +371,25 @@ export const getBestSellingIds = (
     .slice(0, topN)
     .map(([id]) => id);
 };
+
+export const MEAL_FLOW_KEYWORDS: { rank: number; keywords: string[] }[] = [
+  { rank: 0, keywords: ["starter", "appetizer", "soup", "salad"] },
+  { rank: 1, keywords: ["main", "entree", "entrée", "course"] },
+  { rank: 2, keywords: ["side", "add on", "addon", "extra"] },
+  { rank: 3, keywords: ["dessert", "sweet"] },
+  { rank: 4, keywords: ["beverage", "drink", "cocktail", "wine", "juice", "mocktail"] },
+];
+
+export const getMealFlowRank = (category: string): number => {
+  const lower = category.toLowerCase();
+  const match = MEAL_FLOW_KEYWORDS.find((group) =>
+    group.keywords.some((kw) => lower.includes(kw))
+  );
+  return match ? match.rank : 99; // unmatched categories go last
+};
+
+export const getDietRank = (type?: string): number => {
+  if (type === 'veg' || type === 'vegan') return 0;
+  if (type === 'nonveg') return 1;
+  return 2; // items with no diet_type set, sorted last
+};

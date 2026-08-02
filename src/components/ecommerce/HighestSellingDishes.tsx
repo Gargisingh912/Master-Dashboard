@@ -55,7 +55,7 @@ export default function HighestSellingDishes() {
   }, [orders, menu, timeRange]);
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-800 dark:bg-white/[0.03]">
+    <div className="bento-glass p-0">
       <div className="px-5 py-4 sm:px-6 flex justify-between items-center border-b border-gray-100 dark:border-white/[0.05]">
         <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
           Highest Selling Dishes
