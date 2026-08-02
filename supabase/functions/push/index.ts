@@ -62,12 +62,30 @@ export default {
           message: {
             token: fcmToken,
             notification: {
-              title: `New Order!!`,
+              title: `New Order`,
               body: payload.record.body,
             },
-            data: {
-              url: '/dashboard/kitchen/orders'
-            }
+            // Android ignores top-level `notification.sound` — it isn't a
+            // valid field in FCM's v1 API. Sound (and any other
+            // Android-specific display behavior) must go under `android`.
+            android: {
+              priority: 'high', // ensures timely delivery even in Doze/App Standby
+              notification: {
+                sound: 'default', // plays the device's default notification sound
+                channel_id: 'orders', // see note below — must match a channel
+                                       // created client-side with sound enabled
+              },
+            },
+            // iOS equivalent, harmless to include even if you're only
+            // targeting Android right now — keeps this payload correct if
+            // you add iOS/PWA push later.
+            apns: {
+              payload: {
+                aps: {
+                  sound: 'default',
+                },
+              },
+            },
           },
         }),
       }
