@@ -66,7 +66,7 @@ export default function UserProfiles() {
 
   const handleSupportWhatsApp = () => {
     const msg = encodeURIComponent("I have a query/problem");
-    window.open(`https://wa.me/919999999999?text=${msg}`, "_blank");
+    window.open(`https://wa.me/919098470355?text=${msg}`, "_blank");
   };
 
   return (
@@ -185,7 +185,7 @@ export default function UserProfiles() {
             </div>
             <div className="flex-1">
               <h3 className="font-bold text-gray-800 dark:text-white/90">Help & Support</h3>
-              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">support@gargi.ai</p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">gargiaiagency@gmail.com</p>
             </div>
             <span className="text-[10px] font-bold uppercase tracking-wider text-green-600 bg-green-100 px-2 py-1 rounded-full">WhatsApp</span>
           </div>

@@ -22,6 +22,12 @@ export interface MenuAddon {
   price: number;
 }
 
+export interface MenuCategory {
+  id: string;
+  name: string;
+  rank: number;
+}
+
 // Single source of truth — was previously declared twice in this file,
 // which is a TypeScript duplicate-identifier error. Merged into one.
 export interface MenuItem {
@@ -30,7 +36,10 @@ export interface MenuItem {
   price: number;
   category?: string;
   subcategory?: string;
-  image_url?: string;
+  image_url?: string; // Legacy fallback, but keep it for backwards compatibility if needed
+  image_urls?: string[]; // Array of image URLs
+  quantity_info?: string; // e.g. 'Serves 2 people, 200g'
+  spice_level?: number; // e.g. 0-3
   diet_type?: 'veg' | 'nonveg' | 'vegan';
   ingredients: MenuIngredient[];
   addons: MenuAddon[];
@@ -98,6 +107,7 @@ export interface DiscountCoupon {
 interface KitchenContextType {
   inventory: InventoryItem[];
   menu: MenuItem[];
+  categories: MenuCategory[];
   orders: Order[];
   expenses: Expense[];
   coupons: DiscountCoupon[];
@@ -112,9 +122,10 @@ interface KitchenContextType {
   updateExpense: (id: string, updates: Omit<Expense, "id" | "date">) => Promise<void>;
   deleteExpense: (id: string) => Promise<void>;
   monthlyGoal: number;
-  updateMenuItem: (id: string, updates: { name: string; price: number; category?: string; subcategory?: string; image_url?: string; diet_type?: 'veg' | 'nonveg' | 'vegan'; ingredients: MenuIngredient[]; addons: MenuAddon[] }) => Promise<void>;
+  updateMenuItem: (id: string, updates: { name: string; price: number; category?: string; subcategory?: string; image_url?: string; image_urls?: string[]; quantity_info?: string; spice_level?: number; diet_type?: 'veg' | 'nonveg' | 'vegan'; ingredients: MenuIngredient[]; addons: MenuAddon[] }) => Promise<void>;
   deleteMenuItem: (id: string) => Promise<void>;
   setMenuItemAvailability: (id: string, isAvailable: boolean) => Promise<void>;
+  updateCategoryRanks: (orderedCategories: string[]) => Promise<void>;
   setMonthlyGoal: (goal: number) => void;
   updateOrderStatus: (id: string, status: string) => Promise<void>;
   addCoupon: (coupon: Omit<DiscountCoupon, "id" | "used_count" | "created_at">) => Promise<void>;
@@ -130,6 +141,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const { user, loading: authLoading } = useAuth();
   const [menu, setMenu] = useState<MenuItem[]>([]);
+  const [categories, setCategories] = useState<MenuCategory[]>([]);
   const [orders, setOrders] = useState<Order[]>([]);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [coupons, setCoupons] = useState<DiscountCoupon[]>([]);
@@ -169,6 +181,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         setError("Could not determine your organization. Please log in again.");
         setInventory([]);
         setMenu([]);
+        setCategories([]);
         setOrders([]);
         setExpenses([]);
         return;
@@ -203,6 +216,9 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         category: item.category ?? undefined,
         subcategory: item.subcategory ?? undefined,
         image_url: item.image_url ?? undefined,
+        image_urls: item.image_urls || [],
+        quantity_info: item.quantity_info ?? undefined,
+        spice_level: item.spice_level ?? 0,
         diet_type: item.diet_type ?? undefined,
         isAvailable: item.is_available,
         ingredients: (item.menu_ingredients || []).map((ing: any) => ({
@@ -217,6 +233,18 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         })),
       }));
       setMenu(fetchedMenu);
+
+      const { data: catData, error: catError } = await supabase
+        .from('menu_categories')
+        .select('*')
+        .eq('organization_id', currentOrgId)
+        .order('rank', { ascending: true });
+      if (catError) console.error("Category fetch error:", catError);
+      setCategories((catData || []).map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        rank: c.rank
+      })));
 
       const { data: ordersData, error: ordersError } = await supabase
         .from('orders')
@@ -336,7 +364,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
           const r = payload.new as any;
           setMenu(prev => {
             if (prev.find(m => m.id === r.id)) return prev;
-            return [...prev, { id: r.id, name: r.name, price: r.price, category: r.category ?? undefined, subcategory: r.subcategory ?? undefined, image_url: r.image_url ?? undefined, diet_type: r.diet_type ?? undefined, isAvailable: r.is_available, ingredients: [], addons: [] }];
+            return [...prev, { id: r.id, name: r.name, price: r.price, category: r.category ?? undefined, subcategory: r.subcategory ?? undefined, image_url: r.image_url ?? undefined, image_urls: r.image_urls || [], quantity_info: r.quantity_info ?? undefined, spice_level: r.spice_level ?? 0, diet_type: r.diet_type ?? undefined, isAvailable: r.is_available, ingredients: [], addons: [] }];
           });
         }
       )
@@ -345,7 +373,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         { event: 'UPDATE', schema: 'public', table: 'menu_items', filter: `organization_id=eq.${orgId}` },
         (payload) => {
           const r = payload.new as any;
-          setMenu(prev => prev.map(m => m.id === r.id ? { ...m, name: r.name, price: r.price, category: r.category ?? undefined, subcategory: r.subcategory ?? undefined, image_url: r.image_url ?? undefined, diet_type: r.diet_type ?? undefined, isAvailable: r.is_available } : m));
+          setMenu(prev => prev.map(m => m.id === r.id ? { ...m, name: r.name, price: r.price, category: r.category ?? undefined, subcategory: r.subcategory ?? undefined, image_url: r.image_url ?? undefined, image_urls: r.image_urls || [], quantity_info: r.quantity_info ?? undefined, spice_level: r.spice_level ?? 0, diet_type: r.diet_type ?? undefined, isAvailable: r.is_available } : m));
         }
       )
       .on(
@@ -476,12 +504,44 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       )
       .subscribe();
 
+    const categoriesChannel = supabase
+      .channel(`rt-categories-${orgId}`)
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'menu_categories', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          setCategories(prev => {
+            if (prev.find(c => c.id === r.id)) return prev;
+            return [...prev, { id: r.id, name: r.name, rank: r.rank }].sort((a,b) => a.rank - b.rank);
+          });
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'menu_categories', filter: `organization_id=eq.${orgId}` },
+        (payload) => {
+          const r = payload.new as any;
+          setCategories(prev => prev.map(c => c.id === r.id ? { ...c, name: r.name, rank: r.rank } : c).sort((a,b) => a.rank - b.rank));
+        }
+      )
+      .on(
+        'postgres_changes',
+        { event: 'DELETE', schema: 'public', table: 'menu_categories' },
+        (payload) => {
+          const r = payload.old as any;
+          setCategories(prev => prev.filter(c => c.id !== r.id));
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(inventoryChannel);
       supabase.removeChannel(menuChannel);
       supabase.removeChannel(ordersChannel);
       supabase.removeChannel(expensesChannel);
       supabase.removeChannel(couponsChannel);
+      supabase.removeChannel(categoriesChannel);
     };
   }, [orgId]);
 
@@ -586,6 +646,9 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       category: item.category || null,
       subcategory: item.subcategory || null,
       image_url: item.image_url || null,
+      image_urls: item.image_urls || [],
+      quantity_info: item.quantity_info || null,
+      spice_level: item.spice_level || 0,
       diet_type: item.diet_type || null,
       is_available: true,
     }).select().single();
@@ -633,16 +696,16 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       }
     }
 
-    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true, category: item.category, subcategory: item.subcategory, image_url: item.image_url, diet_type: item.diet_type, addons: insertedAddons }]);
+    setMenu(prev => [...prev, { ...item, id: menuData.id, isAvailable: true, category: item.category, subcategory: item.subcategory, image_url: item.image_url, image_urls: item.image_urls || [], quantity_info: item.quantity_info, spice_level: item.spice_level || 0, diet_type: item.diet_type, addons: insertedAddons }]);
   };
 
   const updateMenuItem = async (
     id: string,
-    updates: { name: string; price: number; category?: string; subcategory?: string; image_url?: string; diet_type?: 'veg' | 'nonveg' | 'vegan'; ingredients: MenuIngredient[]; addons: MenuAddon[] }
+    updates: { name: string; price: number; category?: string; subcategory?: string; image_url?: string; image_urls?: string[]; quantity_info?: string; spice_level?: number; diet_type?: 'veg' | 'nonveg' | 'vegan'; ingredients: MenuIngredient[]; addons: MenuAddon[] }
   ) => {
     const { error: updateError } = await supabase
       .from('menu_items')
-      .update({ name: updates.name, price: updates.price, category: updates.category || null, subcategory: updates.subcategory || null, image_url: updates.image_url || null, diet_type: updates.diet_type || null })
+      .update({ name: updates.name, price: updates.price, category: updates.category || null, subcategory: updates.subcategory || null, image_url: updates.image_url || null, image_urls: updates.image_urls || [], quantity_info: updates.quantity_info || null, spice_level: updates.spice_level || 0, diet_type: updates.diet_type || null })
       .eq('id', id);
 
     if (updateError) {
@@ -717,7 +780,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     setMenu(prev =>
       prev.map(m =>
         m.id === id
-          ? { ...m, name: updates.name, price: updates.price, category: updates.category, subcategory: updates.subcategory, diet_type: updates.diet_type, ingredients: updates.ingredients, addons: savedAddons }
+          ? { ...m, name: updates.name, price: updates.price, category: updates.category, subcategory: updates.subcategory, image_urls: updates.image_urls || [], quantity_info: updates.quantity_info, spice_level: updates.spice_level || 0, diet_type: updates.diet_type, ingredients: updates.ingredients, addons: savedAddons }
           : m
       )
     );
@@ -753,6 +816,20 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
     setMenu(prev =>
       prev.map(m => (m.id === id ? { ...m, isAvailable } : m))
     );
+  };
+
+  const updateCategoryRanks = async (orderedCategories: string[]) => {
+    if (!orgId) return;
+    
+    // First ensure they all exist in menu_categories table
+    for (let i = 0; i < orderedCategories.length; i++) {
+      const name = orderedCategories[i];
+      await supabase.from('menu_categories').upsert({
+        organization_id: orgId,
+        name,
+        rank: i
+      }, { onConflict: 'organization_id,name' });
+    }
   };
 
   // ── addOrder — now factors add-on prices into subtotal/total, and
@@ -1023,6 +1100,7 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
       value={{
         inventory,
         menu,
+        categories,
         orders,
         expenses,
         coupons,
@@ -1033,6 +1111,8 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         addMenuItem,
         updateMenuItem,
         deleteMenuItem,
+        setMenuItemAvailability,
+        updateCategoryRanks,
         addOrder,
         updateOrder,
         addExpense,
@@ -1041,7 +1121,6 @@ export const KitchenProvider: React.FC<{ children: ReactNode }> = ({ children })
         monthlyGoal,
         setMonthlyGoal,
         updateOrderStatus,
-        setMenuItemAvailability,
         addCoupon,
         updateCoupon,
         deleteCoupon,

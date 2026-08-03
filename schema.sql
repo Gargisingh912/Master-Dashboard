@@ -39,6 +39,7 @@ DO $$ BEGIN ALTER TABLE organizations ADD COLUMN IF NOT EXISTS type TEXT NOT NUL
 DO $$ BEGIN ALTER TABLE organizations ADD COLUMN IF NOT EXISTS plan TEXT NOT NULL DEFAULT 'trial'; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS trial_ends  TIMESTAMP WITH TIME ZONE;
 ALTER TABLE organizations ADD COLUMN IF NOT EXISTS owner_id    UUID;
+ALTER TABLE organizations ADD COLUMN IF NOT EXISTS logo_url    TEXT;
 
 
 -- ============================================================================
@@ -94,6 +95,9 @@ CREATE TABLE IF NOT EXISTS menu_items (
 
 DO $$ BEGIN ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS is_available BOOLEAN NOT NULL DEFAULT true; EXCEPTION WHEN OTHERS THEN NULL; END $$;
 ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS category TEXT;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS image_urls TEXT[] DEFAULT '{}';
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS quantity_info TEXT;
+ALTER TABLE menu_items ADD COLUMN IF NOT EXISTS spice_level INTEGER DEFAULT 0;
 
 
 -- ============================================================================

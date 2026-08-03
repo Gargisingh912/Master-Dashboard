@@ -3,14 +3,19 @@ import PageMeta from "../../components/common/PageMeta";
 import OrdersTable from "../../components/tables/BasicTables/OrdersTable";
 import { Plus } from "lucide-react";
 import CreateOrderModal from "../../components/ecommerce/CreateOrderModal";
+import KitchenAlertBell from "../../components/ecommerce/KitchenAlertBell";
+import { useAuth } from "../../hooks/useAuth";
 
 export default function Orders() {
   const [showOrderForm, setShowOrderForm] = useState(false);
+  const { org } = useAuth();
 
   return (
     <>
       <PageMeta title="Orders Management | Kitchen Dashboard" description="Manage orders for the kitchen" />
       <div className="space-y-6">
+        <KitchenAlertBell organizationId={org?.id} />
+        
         <OrdersTable />
 
         {/* ── Floating 'Order' button ── */}

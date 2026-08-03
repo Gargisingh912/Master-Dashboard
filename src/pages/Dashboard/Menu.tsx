@@ -251,16 +251,20 @@ function useCategoryColour(categories: string[]) {
 }
 
 export default function Menu() {
-  const { menu, inventory, addMenuItem, updateMenuItem, deleteMenuItem, setMenuItemAvailability, addInventoryItem } = useKitchen();
+  const { menu, inventory, addMenuItem, addInventoryItem, updateMenuItem, deleteMenuItem, setMenuItemAvailability, categories, updateCategoryRanks } = useKitchen();
 
   // ── add-form state ──────────────────────────────────────────────────────────
   const [showAddForm, setShowAddForm] = useState(false);
+  const [showCategoryManager, setShowCategoryManager] = useState(false);
   const [newDishName, setNewDishName] = useState("");
   const [newDishPrice, setNewDishPrice] = useState("");
   const [newDishCategory, setNewDishCategory] = useState("");
   const [newDishSubcategory, setNewDishSubcategory] = useState("");
   const [newDishImageUrl, setNewDishImageUrl] = useState("");
+  const [newDishImageUrls, setNewDishImageUrls] = useState<string[]>([]);
   const [newDishDietType, setNewDishDietType] = useState<'veg' | 'nonveg' | 'vegan' | ''>("");
+  const [newDishQuantityInfo, setNewDishQuantityInfo] = useState("");
+  const [newDishSpiceLevel, setNewDishSpiceLevel] = useState(0);
   const [ingredients, setIngredients] = useState<IngredientRow[]>([]);
   const [addons, setAddons] = useState<AddonRow[]>([]);
 
@@ -271,35 +275,46 @@ export default function Menu() {
   const [editCategory, setEditCategory] = useState("");
   const [editSubcategory, setEditSubcategory] = useState("");
   const [editImageUrl, setEditImageUrl] = useState("");
+  const [editImageUrls, setEditImageUrls] = useState<string[]>([]);
   const [editDietType, setEditDietType] = useState<'veg' | 'nonveg' | 'vegan' | ''>("");
+  const [editQuantityInfo, setEditQuantityInfo] = useState("");
+  const [editSpiceLevel, setEditSpiceLevel] = useState(0);
   const [editIngredients, setEditIngredients] = useState<IngredientRow[]>([]);
   const [editAddons, setEditAddons] = useState<AddonRow[]>([]);
   const [isUploading, setIsUploading] = useState(false);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, isEdit: boolean) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
 
     setIsUploading(true);
     try {
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
-      const filePath = `dishes/${fileName}`;
+      const uploadedUrls: string[] = [];
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const filePath = `dishes/${fileName}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('menu-images')
-        .upload(filePath, file);
+        const { error: uploadError } = await supabase.storage
+          .from('menu-images')
+          .upload(filePath, file);
 
-      if (uploadError) throw uploadError;
+        if (uploadError) throw uploadError;
 
-      const { data } = supabase.storage
-        .from('menu-images')
-        .getPublicUrl(filePath);
+        const { data } = supabase.storage
+          .from('menu-images')
+          .getPublicUrl(filePath);
+
+        uploadedUrls.push(data.publicUrl);
+      }
 
       if (isEdit) {
-        setEditImageUrl(data.publicUrl);
+        setEditImageUrl(prev => prev || uploadedUrls[0]);
+        setEditImageUrls(prev => [...prev, ...uploadedUrls]);
       } else {
-        setNewDishImageUrl(data.publicUrl);
+        setNewDishImageUrl(prev => prev || uploadedUrls[0]);
+        setNewDishImageUrls(prev => [...prev, ...uploadedUrls]);
       }
     } catch (error) {
       console.error("Error uploading image:", error);
@@ -310,10 +325,6 @@ export default function Menu() {
   };
 
   // ── filter state ────────────────────────────────────────────────────────────
-  // Two-tier now: category, then (optionally) subcategory within it — mirrors
-  // the Category → Subcategory → Item → Add-ons hierarchy used on the
-  // ordering side (Orders.tsx / OrderPage.tsx), so admins browse dishes the
-  // same way customers do.
   const [activeFilter, setActiveFilter] = useState<string>("All");
   const [activeSubFilter, setActiveSubFilter] = useState<string>("All");
 
@@ -325,13 +336,16 @@ export default function Menu() {
   const existingCategories = useMemo(() => {
     const cats = new Set<string>();
     menu.forEach((m) => { if (m.category) cats.add(m.category); });
-    return Array.from(cats).sort((a, b) => getMealFlowRank(a) - getMealFlowRank(b));
-  }, [menu]);
+    
+    const arr = Array.from(cats);
+    arr.sort((a, b) => {
+      const rankA = categories.find(c => c.name === a)?.rank ?? 9999;
+      const rankB = categories.find(c => c.name === b)?.rank ?? 9999;
+      return rankA - rankB;
+    });
+    return arr;
+  }, [menu, categories]);
 
-  // category -> its distinct subcategories, so the subcategory input/datalist
-  // and the second-tier filter bar only ever show subcategories that
-  // actually belong to the selected category, instead of every subcategory
-  // in the whole menu.
   const categorySubcategoryMap = useMemo(() => {
     const map: Record<string, string[]> = {};
     menu.forEach((m) => {
@@ -344,17 +358,12 @@ export default function Menu() {
 
   const filterTabs = ["All", ...existingCategories];
 
-  // Subcategory tabs available for whichever category tab is active. Only
-  // meaningful (and only rendered) when that category actually has more
-  // than one distinct subcategory.
   const subFilterTabs = useMemo(() => {
     if (activeFilter === "All" || activeFilter === "Uncategorized") return [];
     const subs = categorySubcategoryMap[activeFilter] || [];
     return subs.length > 1 ? ["All", ...subs] : [];
   }, [activeFilter, categorySubcategoryMap]);
 
-  // Reset subcategory filter whenever the category filter changes so a
-  // stale subcategory selection from a different category can't linger.
   const handleCategoryFilterChange = (tab: string) => {
     setActiveFilter(tab);
     setActiveSubFilter("All");
@@ -366,16 +375,12 @@ export default function Menu() {
       items = items.filter((m) =>
         activeFilter === "Uncategorized" ? !m.category : m.category === activeFilter
       );
-    }
-    if (activeSubFilter !== "All") {
-      items = items.filter((m) => m.subcategory === activeSubFilter);
+      if (activeSubFilter !== "All") {
+        items = items.filter((m) => m.subcategory === activeSubFilter);
+      }
     }
     
-    // Sort items by diet type, then by price
-    return [...items].sort((a, b) => {
-      const rankDiff = getDietRank(a.diet_type as string) - getDietRank(b.diet_type as string);
-      return rankDiff !== 0 ? rankDiff : a.price - b.price;
-    });
+    return items.sort((a, b) => a.name.localeCompare(b.name));
   }, [menu, activeFilter, activeSubFilter]);
 
   const getCategoryColour = useCategoryColour(existingCategories);
@@ -442,8 +447,11 @@ export default function Menu() {
       price: parseFloat(newDishPrice),
       category: newDishCategory.trim() || undefined,
       subcategory: newDishSubcategory.trim() || undefined,
-      image_url: newDishImageUrl.trim() || undefined,
+      image_url: newDishImageUrls[0] || undefined, // First image as main thumbnail
+      image_urls: newDishImageUrls,
       diet_type: newDishDietType || undefined,
+      quantity_info: newDishQuantityInfo.trim() || undefined,
+      spice_level: newDishSpiceLevel,
       ingredients,
       addons: addons.filter(a => a.name.trim() !== "") as MenuAddon[],
     });
@@ -453,7 +461,10 @@ export default function Menu() {
     setNewDishCategory("");
     setNewDishSubcategory("");
     setNewDishImageUrl("");
+    setNewDishImageUrls([]);
     setNewDishDietType("");
+    setNewDishQuantityInfo("");
+    setNewDishSpiceLevel(0);
     setIngredients([]);
     setAddons([]);
     setShowAddForm(false);
@@ -467,7 +478,10 @@ export default function Menu() {
     setEditCategory(item.category ?? "");
     setEditSubcategory(item.subcategory ?? "");
     setEditImageUrl(item.image_url ?? "");
+    setEditImageUrls(item.image_urls ?? []);
     setEditDietType((item.diet_type as any) ?? "");
+    setEditQuantityInfo(item.quantity_info ?? "");
+    setEditSpiceLevel(item.spice_level ?? 0);
     setEditIngredients(item.ingredients.map((ing) => ({ ...ing })));
     setEditAddons(item.addons.map((a) => ({ ...a })));
   };
@@ -479,7 +493,10 @@ export default function Menu() {
     setEditCategory("");
     setEditSubcategory("");
     setEditImageUrl("");
+    setEditImageUrls([]);
     setEditDietType("");
+    setEditQuantityInfo("");
+    setEditSpiceLevel(0);
     setEditIngredients([]);
     setEditAddons([]);
   };
@@ -511,9 +528,18 @@ export default function Menu() {
   };
   const handleEditRemoveAddon = (index: number) => setEditAddons(editAddons.filter((_, i) => i !== index));
 
-  // Diet type is applied to local edit state immediately on click; the visible
-  // badge on the card only updates once the whole edit is saved (same as
-  // name/price/category), since all fields save together via updateMenuItem.
+  const moveCategory = (index: number, direction: 'up' | 'down') => {
+    const cats = [...existingCategories];
+    if (direction === 'up' && index > 0) {
+      [cats[index - 1], cats[index]] = [cats[index], cats[index - 1]];
+    } else if (direction === 'down' && index < cats.length - 1) {
+      [cats[index + 1], cats[index]] = [cats[index], cats[index + 1]];
+    } else {
+      return;
+    }
+    updateCategoryRanks(cats);
+  };
+
   const handleEditDietTypeChange = (value: 'veg' | 'nonveg' | 'vegan' | '') => {
     setEditDietType(value);
   };
@@ -526,8 +552,11 @@ export default function Menu() {
       price: parseFloat(editPrice),
       category: editCategory.trim() || undefined,
       subcategory: editSubcategory.trim() || undefined,
-      image_url: editImageUrl.trim() || undefined,
+      image_url: editImageUrls[0] || undefined,
+      image_urls: editImageUrls,
       diet_type: editDietType || undefined,
+      quantity_info: editQuantityInfo.trim() || undefined,
+      spice_level: editSpiceLevel,
       ingredients: editIngredients,
       addons: editAddons.filter(a => a.name.trim() !== "") as MenuAddon[],
     });
@@ -545,7 +574,6 @@ export default function Menu() {
     }
   };
 
-  // ── category input (shared between add and edit forms) ──────────────────────
   const CategoryInput = ({
     value,
     onChange,
@@ -573,12 +601,6 @@ export default function Menu() {
     </div>
   );
 
-  // ── subcategory input (shared between add and edit forms) ───────────────────
-  // Scoped to the category currently typed into the sibling CategoryInput —
-  // this is what actually makes "Category → Subcategory" a real hierarchy
-  // for the person managing the menu, instead of two unrelated free-text
-  // fields. Falls back to suggesting every known subcategory when no
-  // category has been chosen yet.
   let subcategoryInputCounter = 0;
   const SubcategoryInput = ({
     value,
@@ -618,20 +640,65 @@ export default function Menu() {
   };
 
   return (
-    <>
-      <PageMeta title="Menu Management | Kitchen Dashboard" description="Manage dishes and ingredients" />
+    <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+      <PageMeta title="Menu | Master Dashboard" description="Manage your restaurant menu, dishes, categories and add-ons" />
+      <div className="flex flex-col lg:flex-row gap-8">
       <div className="space-y-6">
 
         {/* ── Header ── */}
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-bold text-gray-800 dark:text-white/90">Menu Items</h2>
-          <button
-            onClick={() => setShowAddForm(!showAddForm)}
-            className="rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white hover:bg-brand-600"
-          >
-            {showAddForm ? "Cancel" : "Add New Dish"}
-          </button>
+          <div className="flex items-center gap-3">
+            {existingCategories.length > 1 && (
+              <button
+                onClick={() => setShowCategoryManager(!showCategoryManager)}
+                className="text-sm text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 font-medium border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+              >
+                {showCategoryManager ? "Close Sort" : "Sort Categories"}
+              </button>
+            )}
+            <button
+              onClick={() => {
+                if (editingId) cancelEditing();
+                setShowAddForm(!showAddForm);
+              }}
+              className="flex shrink-0 items-center gap-2 rounded-lg bg-brand-500 px-4 py-2 text-sm font-medium text-white shadow-xs hover:bg-brand-600 justify-center transition-colors"
+            >
+              {showAddForm ? "Cancel" : "Add New Dish"}
+            </button>
+          </div>
         </div>
+
+        {/* ── Category Manager ── */}
+        {showCategoryManager && (
+          <div className="rounded-xl border border-gray-200 bg-white p-6 mb-6 dark:border-white/[0.05] dark:bg-white/[0.03]">
+            <h3 className="text-lg font-medium text-gray-800 dark:text-white/90 mb-4">Sort Categories</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">Use the up and down arrows to change the order categories appear on the menu.</p>
+            <div className="space-y-2">
+              {existingCategories.map((cat, idx) => (
+                <div key={cat} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-white/10">
+                  <span className="font-medium text-gray-800 dark:text-white/90">{cat}</span>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => moveCategory(idx, 'up')}
+                      disabled={idx === 0}
+                      className="p-1 rounded bg-white dark:bg-gray-700 border border-gray-200 dark:border-white/10 hover:bg-gray-100 disabled:opacity-50"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      onClick={() => moveCategory(idx, 'down')}
+                      disabled={idx === existingCategories.length - 1}
+                      className="p-1 rounded bg-white dark:bg-gray-700 border border-gray-200 dark:border-white/10 hover:bg-gray-100 disabled:opacity-50"
+                    >
+                      ↓
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ── Add form ── */}
         {showAddForm && (
@@ -679,16 +746,51 @@ export default function Menu() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Image</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quantity / Serves</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Serves 2, 200g"
+                    value={newDishQuantityInfo}
+                    onChange={(e) => setNewDishQuantityInfo(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Spice Level</label>
+                  <select
+                    value={newDishSpiceLevel}
+                    onChange={(e) => setNewDishSpiceLevel(parseInt(e.target.value))}
+                    className="w-full rounded-lg border border-gray-300 px-4 py-2 text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                  >
+                    <option value="0">None</option>
+                    <option value="1">🌶️ Mild</option>
+                    <option value="2">🌶️🌶️ Medium</option>
+                    <option value="3">🌶️🌶️🌶️ Hot</option>
+                  </select>
+                </div>
+                <div className="md:col-span-2 lg:col-span-4">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Images</label>
                   <div className="flex items-center gap-3">
-                    {newDishImageUrl && (
-                      <div className="h-10 w-10 shrink-0 overflow-hidden rounded bg-gray-100">
-                        <img src={newDishImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                    {newDishImageUrls.length > 0 && (
+                      <div className="flex gap-2 flex-wrap">
+                        {newDishImageUrls.map((url, i) => (
+                          <div key={i} className="relative h-10 w-10 shrink-0 overflow-hidden rounded bg-gray-100 group">
+                            <img src={url} alt="Preview" className="h-full w-full object-cover" />
+                            <button
+                              type="button"
+                              onClick={() => setNewDishImageUrls(prev => prev.filter((_, idx) => idx !== i))}
+                              className="absolute top-0 right-0 bg-red-500 text-white rounded-bl p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     )}
                     <div className="flex-1">
                       <input
                         type="file"
+                        multiple
                         accept="image/*"
                         onChange={(e) => handleImageUpload(e, false)}
                         disabled={isUploading}
@@ -827,16 +929,51 @@ export default function Menu() {
                           <option value="vegan">🟣 Vegan</option>
                         </select>
                       </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Quantity / Serves</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Serves 2, 200g"
+                          value={editQuantityInfo}
+                          onChange={(e) => setEditQuantityInfo(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Spice Level</label>
+                        <select
+                          value={editSpiceLevel}
+                          onChange={(e) => setEditSpiceLevel(parseInt(e.target.value))}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-1.5 text-sm text-gray-800 focus:border-brand-500 focus:outline-hidden dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+                        >
+                          <option value="0">None</option>
+                          <option value="1">🌶️ Mild</option>
+                          <option value="2">🌶️🌶️ Medium</option>
+                          <option value="3">🌶️🌶️🌶️ Hot</option>
+                        </select>
+                      </div>
                       <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Image</label>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Dish Images</label>
                         <div className="flex items-center gap-3">
-                          {editImageUrl && (
-                            <div className="h-9 w-9 shrink-0 overflow-hidden rounded bg-gray-100">
-                              <img src={editImageUrl} alt="Preview" className="h-full w-full object-cover" />
+                          {editImageUrls.length > 0 && (
+                            <div className="flex gap-2 flex-wrap">
+                              {editImageUrls.map((url, i) => (
+                                <div key={i} className="relative h-9 w-9 shrink-0 overflow-hidden rounded bg-gray-100 group">
+                                  <img src={url} alt="Preview" className="h-full w-full object-cover" />
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditImageUrls(prev => prev.filter((_, idx) => idx !== i))}
+                                    className="absolute top-0 right-0 bg-red-500 text-white rounded-bl p-[1px] opacity-0 group-hover:opacity-100 transition-opacity"
+                                  >
+                                    <Trash2 size={10} />
+                                  </button>
+                                </div>
+                              ))}
                             </div>
                           )}
                           <input
                             type="file"
+                            multiple
                             accept="image/*"
                             onChange={(e) => handleImageUpload(e, true)}
                             disabled={isUploading}
@@ -997,6 +1134,7 @@ export default function Menu() {
           })}
         </div>
       </div>
-    </>
+      </div>
+    </div>
   );
 }

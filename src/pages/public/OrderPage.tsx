@@ -18,7 +18,10 @@ interface MenuItem {
   category?: string;
   subcategory?: string;
   image_url?: string;
-  diet_type?: 'veg' | 'nonveg' | 'vegan';
+  image_urls?: string[];
+  quantity_info?: string;
+  spice_level?: number;
+  diet_type?: "veg" | "nonveg" | "vegan";
   addons: MenuAddon[];
 }
 
@@ -43,14 +46,18 @@ const parseCartKey = (key: string): { menuItemId: string; addonIds: string[] } =
   return { menuItemId, addonIds: addonPart ? addonPart.split(",") : [] };
 };
 
-const OrderPage: React.FC = () => {
-  const { organizationId } = useParams<{ organizationId: string }>();
-  const [orgName, setOrgName] = useState<string>("");
+export default function OrderPage({ organizationId: propOrgId }: { organizationId?: string }) {
+  const { organizationId: paramOrgId } = useParams<{ organizationId: string }>();
+  const organizationId = propOrgId || paramOrgId;
+  const [orgName, setOrgName] = useState("");
+  const [orgLogo, setOrgLogo] = useState("");
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [categoriesOrder, setCategoriesOrder] = useState<Record<string, number>>({});
   const [cart, setCart] = useState<Record<string, number>>({}); // cart key -> quantity
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [authReady, setAuthReady] = useState(false);
+  const [isLive, setIsLive] = useState(true);
 
   // Accordion open/close state — multi-open, so several categories (and
   // several subcategories within them) can be expanded at the same time.
@@ -83,7 +90,8 @@ const OrderPage: React.FC = () => {
   const [couponMinOrder, setCouponMinOrder] = useState(0);
 
   // Feature 7: image zoom
-  const [zoomImage, setZoomImage] = useState<string | null>(null);
+  const [zoomImages, setZoomImages] = useState<string[]>([]);
+  const [zoomImageIndex, setZoomImageIndex] = useState(0);
 
   const [submittedOrder, setSubmittedOrder] = useState<{
     id: string;
@@ -169,16 +177,29 @@ const OrderPage: React.FC = () => {
     const fetchData = async () => {
       const { data: orgData, error: orgErr } = await supabasePublic
         .from("public_org_info")
-        .select("name")
+        .select("name, is_live, logo_url")
         .eq("id", actualOrgId)
         .maybeSingle();
 
       if (orgErr) console.error("Failed to load organization:", orgErr);
       setOrgName(orgData?.name || "");
+      if (orgData?.logo_url) setOrgLogo(orgData.logo_url);
+      if (orgData?.is_live !== undefined) setIsLive(orgData.is_live);
+
+      const { data: catData } = await supabasePublic
+        .from("menu_categories")
+        .select("name, rank")
+        .eq("organization_id", actualOrgId);
+        
+      const catOrder: Record<string, number> = {};
+      (catData || []).forEach((c: any) => {
+        catOrder[c.name] = c.rank;
+      });
+      setCategoriesOrder(catOrder);
 
       const { data: items, error: menuErr } = await supabasePublic
         .from("menu_items")
-        .select("id, name, price, category, subcategory, image_url, diet_type, menu_addons(id, name, price)")
+        .select("id, name, price, category, subcategory, image_url, image_urls, quantity_info, spice_level, diet_type, menu_addons(id, name, price)")
         .eq("organization_id", actualOrgId)
         .eq("is_available", true);
 
@@ -213,6 +234,9 @@ const OrderPage: React.FC = () => {
         category: item.category ?? undefined,
         subcategory: item.subcategory ?? undefined,
         image_url: item.image_url ?? undefined,
+        image_urls: item.image_urls || [],
+        quantity_info: item.quantity_info ?? undefined,
+        spice_level: item.spice_level ?? 0,
         diet_type: item.diet_type ?? undefined,
         addons: (item.menu_addons || []).map((a: any) => ({ id: a.id, name: a.name, price: a.price })),
       })));
@@ -227,30 +251,14 @@ const OrderPage: React.FC = () => {
   const bestSellingItems = menuItems.filter((m) => bestSellingIds.includes(m.id));
   bestSellingItems.sort((a, b) => bestSellingIds.indexOf(a.id) - bestSellingIds.indexOf(b.id));
 
-  // ── Meal flow ordering ──────────────────────────────────────────────────────
-  // Maps free-text category names (set by restaurant owners in Menu Management)
-  // to the logical serving order. Matching is keyword-based since owners type
-  // category names freely — "add on" and "Sides" both need to land in the
-  // same bucket. Unmatched categories fall to the end, in their original order.
-  const MEAL_FLOW_KEYWORDS: { rank: number; keywords: string[] }[] = [
-    { rank: 0, keywords: ["starter", "appetizer", "soup", "salad"] },
-    { rank: 1, keywords: ["main", "entree", "entrée", "course"] },
-    { rank: 2, keywords: ["side", "add on", "addon", "extra"] },
-    { rank: 3, keywords: ["dessert", "sweet"] },
-    { rank: 4, keywords: ["beverage", "drink", "cocktail", "wine", "juice", "mocktail"] },
-  ];
-
-  const getMealFlowRank = (category: string): number => {
-    const lower = category.toLowerCase();
-    const match = MEAL_FLOW_KEYWORDS.find((group) =>
-      group.keywords.some((kw) => lower.includes(kw))
-    );
-    return match ? match.rank : 99; // unmatched categories go last
+  // ── Category Ordering ─────────────────────────────────────────────────────────
+  const getCategoryRank = (category: string): number => {
+    return categoriesOrder[category] ?? 9999;
   };
 
   const userCategories = Array.from(
     new Set(menuItems.map((m) => m.category).filter((c): c is string => !!c))
-  ).sort((a, b) => getMealFlowRank(a) - getMealFlowRank(b));
+  ).sort((a, b) => getCategoryRank(a) - getCategoryRank(b));
 
   const grouped: Record<string, MenuItem[]> = {};
   menuItems.forEach((m) => {
@@ -748,7 +756,13 @@ const OrderPage: React.FC = () => {
             onToggleAddon={toggleAddonSelection}
             onConfirmAddon={confirmAddonSelection}
             onCancelAddon={cancelAddonSelection}
-            onZoom={setZoomImage}
+            onZoom={(urls) => {
+              if (urls && urls.length > 0) {
+                setZoomImages(urls);
+                setZoomImageIndex(0);
+              }
+            }}
+            isLive={isLive}
           />
         ))}
       </div>
@@ -758,37 +772,83 @@ const OrderPage: React.FC = () => {
   return (
     <div className="max-w-md mx-auto bg-gray-50 min-h-screen">
 
-      {/* Feature 7: Image zoom modal */}
-      {zoomImage && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 flex items-center justify-center p-4"
-          onClick={() => setZoomImage(null)}
+      {/* Feature 7: Image zoom modal (Multiple Images) */}
+      {zoomImages.length > 0 && (
+        <div 
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/90 p-4 animate-in fade-in duration-200"
+          onClick={() => setZoomImages([])}
         >
-          <div className="relative max-w-full max-h-full" onClick={(e) => e.stopPropagation()}>
+          <div className="relative w-full max-w-3xl aspect-square sm:aspect-video flex items-center justify-center">
+            {zoomImages.length > 1 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setZoomImageIndex(prev => prev > 0 ? prev - 1 : zoomImages.length - 1);
+                }}
+                className="absolute left-2 z-10 p-2 bg-black/50 hover:bg-black/80 rounded-full text-white"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 18 9 12 15 6"></polyline></svg>
+              </button>
+            )}
+            
             <img
-              src={zoomImage}
-              alt="Menu item"
+              src={zoomImages[zoomImageIndex]}
+              alt="Zoomed product"
               className="max-w-[90vw] max-h-[85vh] rounded-xl object-contain shadow-2xl"
               style={{ touchAction: 'pinch-zoom' }}
+              onClick={(e) => e.stopPropagation()}
             />
-            <button
-              onClick={() => setZoomImage(null)}
-              className="absolute -top-4 -right-4 w-10 h-10 bg-white rounded-full flex items-center justify-center text-gray-800 shadow-lg hover:bg-gray-100 font-bold text-lg"
+
+            {zoomImages.length > 1 && (
+              <button 
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setZoomImageIndex(prev => prev < zoomImages.length - 1 ? prev + 1 : 0);
+                }}
+                className="absolute right-2 z-10 p-2 bg-black/50 hover:bg-black/80 rounded-full text-white"
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"></polyline></svg>
+              </button>
+            )}
+            
+            <button 
+              className="absolute top-4 right-4 p-2 bg-black/50 hover:bg-black/80 rounded-full transition-colors"
+              onClick={() => setZoomImages([])}
             >
-              ✕
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
             </button>
+
+            {zoomImages.length > 1 && (
+              <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-2">
+                {zoomImages.map((_, i) => (
+                  <div key={i} className={`w-2 h-2 rounded-full ${i === zoomImageIndex ? 'bg-white' : 'bg-white/30'}`} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* Sticky header with brand name + diet filter */}
       <div className="sticky top-0 z-30 bg-white border-b border-gray-100 px-4 pt-5 pb-3">
-        {orgName && (
-          <h2 className="text-center text-lg font-extrabold text-gray-900 tracking-tight mb-1">
-            {orgName}
-          </h2>
+        <div className="flex flex-row items-center justify-center gap-3 mb-1">
+          {orgLogo && (
+            <img src={orgLogo} alt="Logo" className="w-12 h-12 rounded-full object-cover shadow-sm" />
+          )}
+          {orgName && (
+            <h2 className="text-center text-xl font-extrabold text-gray-900 tracking-tight">
+              {orgName}
+            </h2>
+          )}
+        </div>
+        <h1 className="text-2xl font-bold text-gray-800 mb-1 text-center">Order Menu</h1>
+
+        {!isLive && (
+          <div className="mt-2 mb-3 bg-red-50 border border-red-200 text-red-600 rounded-lg p-3 text-sm font-semibold flex items-center justify-center gap-2">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+            Kitchen is currently closed
+          </div>
         )}
-        <h1 className="text-2xl font-bold text-gray-800 mb-1">Order Menu</h1>
 
         {/* Feature 9: Diet filter dropdown */}
         <div className="flex items-center gap-2 mt-2 mb-1">
@@ -811,8 +871,9 @@ const OrderPage: React.FC = () => {
           <p className="text-red-500 text-sm mb-4 bg-red-50 p-3 rounded-lg border border-red-100">{error}</p>
         )}
 
-        {/* Contact / customer details */}
-        <div className="mb-6 bg-white border border-gray-200 rounded-xl p-5 shadow-theme-xs">
+        {/* Contact / customer details - Only show if kitchen is live */}
+        {isLive && (
+          <div className="mb-6 bg-white border border-gray-200 rounded-xl p-5 shadow-theme-xs">
           <label className="block text-sm font-semibold text-gray-700">Contact Number</label>
           <div className="flex gap-3 mt-2">
             <input
@@ -863,6 +924,7 @@ const OrderPage: React.FC = () => {
             </div>
           )}
         </div>
+        )}
 
         {/* ── Menu — nested, multi-open accordion: category → subcategory → items ── */}
         {menuItems.length === 0 ? (
@@ -932,8 +994,8 @@ const OrderPage: React.FC = () => {
         )}
       </div>
 
-      {/* Sticky cart bar */}
-      {cartLines.length > 0 && (
+      {/* Sticky cart bar - Only show if kitchen is live */}
+      {isLive && cartLines.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white/95 backdrop-blur-md border-t border-gray-200 z-50">
           <div className="max-w-md mx-auto p-4">
             {/* Itemized cart lines — needed now that add-ons can make the
@@ -1017,7 +1079,7 @@ const OrderPage: React.FC = () => {
       )}
     </div>
   );
-};
+}
 
 // Diet type indicator
 const DietDot = ({ type }: { type?: string }) => {
@@ -1093,6 +1155,7 @@ function MenuItemCard({
   onConfirmAddon,
   onCancelAddon,
   onZoom,
+  isLive,
 }: {
   item: MenuItem;
   totalQty: number;
@@ -1104,7 +1167,8 @@ function MenuItemCard({
   onToggleAddon: (addonId: string) => void;
   onConfirmAddon: () => void;
   onCancelAddon: () => void;
-  onZoom: (url: string) => void;
+  onZoom: (urls: string[]) => void;
+  isLive?: boolean;
 }) {
   const hasAddons = item.addons.length > 0;
 
@@ -1113,22 +1177,47 @@ function MenuItemCard({
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-4">
           {/* Feature 7: clicking image opens zoom modal */}
-          {item.image_url && (
+          {item.image_urls && item.image_urls.length > 0 ? (
             <div
               className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-gray-100 cursor-zoom-in relative group"
-              onClick={() => onZoom(item.image_url!)}
+              onClick={() => onZoom(item.image_urls!)}
+            >
+              <img src={item.image_urls[0]} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+              <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
+              </div>
+              {item.image_urls.length > 1 && (
+                <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1 rounded-sm">
+                  1/{item.image_urls.length}
+                </div>
+              )}
+            </div>
+          ) : item.image_url ? (
+            <div
+              className="w-16 h-16 shrink-0 rounded-lg overflow-hidden bg-gray-100 cursor-zoom-in relative group"
+              onClick={() => onZoom([item.image_url!])}
             >
               <img src={item.image_url} alt={item.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
               <div className="absolute inset-0 bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/><line x1="11" y1="8" x2="11" y2="14"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
               </div>
             </div>
-          )}
+          ) : null}
           <div>
             <div className="flex items-center gap-1.5 mb-0.5">
               <DietDot type={item.diet_type} />
-              <p className="font-semibold text-gray-800">{item.name}</p>
+              <p className="font-semibold text-gray-800 flex items-center gap-1">
+                {item.name}
+                {item.spice_level ? (
+                  <span className="text-xs" title={`Spice level: ${item.spice_level}`}>
+                    {'🌶️'.repeat(item.spice_level)}
+                  </span>
+                ) : null}
+              </p>
             </div>
+            {item.quantity_info && (
+              <p className="text-xs text-gray-500 mb-0.5">{item.quantity_info}</p>
+            )}
             <p className="text-sm font-medium text-brand-500 mt-0.5">₹{item.price.toFixed(2)}</p>
             {hasAddons && (
               <p className="text-xs text-gray-400 mt-0.5">
@@ -1137,19 +1226,23 @@ function MenuItemCard({
             )}
           </div>
         </div>
-        <div className="flex items-center gap-3 bg-gray-50 rounded-full p-1 border border-gray-100 shrink-0">
-          {!hasAddons && totalQty > 0 ? (
-            <>
-              <button onClick={onDecrement} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-gray-600 shadow-xs hover:bg-gray-50 transition-colors">−</button>
-              <span className="w-6 text-center font-semibold text-gray-800">{totalQty}</span>
-              <button onClick={onIncrement} className="w-8 h-8 flex items-center justify-center rounded-full bg-brand-500 text-white shadow-xs hover:bg-brand-600 transition-colors">+</button>
-            </>
-          ) : (
-            <button onClick={onAddClick} className="px-4 py-1.5 rounded-full bg-brand-50 text-brand-600 font-medium text-sm hover:bg-brand-100 transition-colors">
-              {totalQty > 0 ? `+ (${totalQty})` : "Add"}
-            </button>
-          )}
-        </div>
+        
+        {/* Only show add/increment controls if kitchen is live */}
+        {isLive && (
+          <div className="flex items-center gap-3 bg-gray-50 rounded-full p-1 border border-gray-100 shrink-0">
+            {!hasAddons && totalQty > 0 ? (
+              <>
+                <button onClick={onDecrement} className="w-8 h-8 flex items-center justify-center rounded-full bg-white text-gray-600 shadow-xs hover:bg-gray-50 transition-colors">−</button>
+                <span className="w-6 text-center font-semibold text-gray-800">{totalQty}</span>
+                <button onClick={onIncrement} className="w-8 h-8 flex items-center justify-center rounded-full bg-brand-500 text-white shadow-xs hover:bg-brand-600 transition-colors">+</button>
+              </>
+            ) : (
+              <button onClick={onAddClick} className="px-4 py-1.5 rounded-full bg-brand-50 text-brand-600 font-medium text-sm hover:bg-brand-100 transition-colors">
+                {totalQty > 0 ? `+ (${totalQty})` : "Add"}
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Add-on picker — only rendered for the item currently being configured */}
@@ -1184,5 +1277,3 @@ function MenuItemCard({
     </div>
   );
 }
-
-export default OrderPage;

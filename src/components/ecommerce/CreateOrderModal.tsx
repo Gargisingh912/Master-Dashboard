@@ -23,7 +23,7 @@ interface CreateOrderModalProps {
 }
 
 export default function CreateOrderModal({ isOpen, onClose }: CreateOrderModalProps) {
-  const { menu, orders, addOrder } = useKitchen();
+  const { menu, orders, addOrder, categories: kitchenCategories } = useKitchen();
   const {
     contact, setContact,
     customerName, setCustomerName,
@@ -70,8 +70,12 @@ export default function CreateOrderModal({ isOpen, onClose }: CreateOrderModalPr
   const categories = useMemo(() => {
     const cats = new Set<string>();
     availableMenu.forEach((m) => { if (m.category) cats.add(m.category); });
-    return Array.from(cats).sort((a, b) => getMealFlowRank(a) - getMealFlowRank(b));
-  }, [availableMenu]);
+    return Array.from(cats).sort((a, b) => {
+      const rankA = kitchenCategories.find(c => c.name === a)?.rank ?? 9999;
+      const rankB = kitchenCategories.find(c => c.name === b)?.rank ?? 9999;
+      return rankA - rankB;
+    });
+  }, [availableMenu, kitchenCategories]);
 
   const grouped = useMemo(() => {
     const g: Record<string, typeof availableMenu> = {};

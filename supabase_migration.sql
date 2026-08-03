@@ -108,3 +108,12 @@ BEGIN
     END IF;
   END IF;
 END $$;
+
+-- 7. Add missing columns for logo and menu details
+ALTER TABLE organizations
+ADD COLUMN IF NOT EXISTS logo_url TEXT;
+
+ALTER TABLE menu_items
+ADD COLUMN IF NOT EXISTS image_urls TEXT[] DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS quantity_info TEXT,
+ADD COLUMN IF NOT EXISTS spice_level INTEGER DEFAULT 0;
