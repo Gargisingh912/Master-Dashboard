@@ -3,7 +3,7 @@ import { useKitchen, MenuAddon } from "../../context/KitchenContext";
 import { useOrderDraft } from "../../context/OrderDraftContext";
 import DatePicker from "react-datepicker";
 import "react-datepicker/dist/react-datepicker.css";
-import { getBestSellingIds, getMealFlowRank, getDietRank } from "../../utils/helpers";
+import { getBestSellingIds, getDietRank } from "../../utils/helpers";
 import { X, ChevronDown, Search, Trash2 } from "lucide-react";
 
 // ── Composite cart key helpers ──────────────────────────────────────────────

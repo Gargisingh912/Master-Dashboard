@@ -14,6 +14,7 @@ interface MenuAddon {
 interface MenuItem {
   id: string;
   name: string;
+  description?: string;
   price: number;
   category?: string;
   subcategory?: string;

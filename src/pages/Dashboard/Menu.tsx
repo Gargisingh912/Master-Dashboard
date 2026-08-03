@@ -2,7 +2,6 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import PageMeta from "../../components/common/PageMeta";
 import { supabase } from "../../config/supabase";
 import { useKitchen, MenuIngredient, MenuAddon } from "../../context/KitchenContext";
-import { getMealFlowRank, getDietRank } from "../../utils/helpers";
 import { Trash2 } from "lucide-react";
 
 interface IngredientRow {
@@ -260,7 +259,6 @@ export default function Menu() {
   const [newDishPrice, setNewDishPrice] = useState("");
   const [newDishCategory, setNewDishCategory] = useState("");
   const [newDishSubcategory, setNewDishSubcategory] = useState("");
-  const [newDishImageUrl, setNewDishImageUrl] = useState("");
   const [newDishImageUrls, setNewDishImageUrls] = useState<string[]>([]);
   const [newDishDietType, setNewDishDietType] = useState<'veg' | 'nonveg' | 'vegan' | ''>("");
   const [newDishQuantityInfo, setNewDishQuantityInfo] = useState("");
@@ -274,7 +272,6 @@ export default function Menu() {
   const [editPrice, setEditPrice] = useState("");
   const [editCategory, setEditCategory] = useState("");
   const [editSubcategory, setEditSubcategory] = useState("");
-  const [editImageUrl, setEditImageUrl] = useState("");
   const [editImageUrls, setEditImageUrls] = useState<string[]>([]);
   const [editDietType, setEditDietType] = useState<'veg' | 'nonveg' | 'vegan' | ''>("");
   const [editQuantityInfo, setEditQuantityInfo] = useState("");
@@ -310,10 +307,8 @@ export default function Menu() {
       }
 
       if (isEdit) {
-        setEditImageUrl(prev => prev || uploadedUrls[0]);
         setEditImageUrls(prev => [...prev, ...uploadedUrls]);
       } else {
-        setNewDishImageUrl(prev => prev || uploadedUrls[0]);
         setNewDishImageUrls(prev => [...prev, ...uploadedUrls]);
       }
     } catch (error) {
@@ -460,7 +455,6 @@ export default function Menu() {
     setNewDishPrice("");
     setNewDishCategory("");
     setNewDishSubcategory("");
-    setNewDishImageUrl("");
     setNewDishImageUrls([]);
     setNewDishDietType("");
     setNewDishQuantityInfo("");
@@ -477,7 +471,6 @@ export default function Menu() {
     setEditPrice(String(item.price));
     setEditCategory(item.category ?? "");
     setEditSubcategory(item.subcategory ?? "");
-    setEditImageUrl(item.image_url ?? "");
     setEditImageUrls(item.image_urls ?? []);
     setEditDietType((item.diet_type as any) ?? "");
     setEditQuantityInfo(item.quantity_info ?? "");
@@ -492,7 +485,6 @@ export default function Menu() {
     setEditPrice("");
     setEditCategory("");
     setEditSubcategory("");
-    setEditImageUrl("");
     setEditImageUrls([]);
     setEditDietType("");
     setEditQuantityInfo("");
