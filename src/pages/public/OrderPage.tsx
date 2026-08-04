@@ -203,6 +203,10 @@ export default function OrderPage({ organizationId: propOrgId }: { organizationI
         .select("id, name, price, category, subcategory, image_url, image_urls, quantity_info, spice_level, diet_type, menu_addons(id, name, price)")
         .eq("organization_id", actualOrgId)
         .eq("is_available", true);
+      console.log("raw menu_items response:", items);
+console.log("menu_items error:", menuErr);
+console.log("actualOrgId used:", actualOrgId);
+console.log("menu_addons", items?.flatMap((item: any) => item.menu_addons) || []);
 
       if (menuErr) console.error("Failed to load menu:", menuErr);
 
@@ -1172,6 +1176,7 @@ function MenuItemCard({
   isLive?: boolean;
 }) {
   const hasAddons = item.addons.length > 0;
+  console.log(`${item.name}: hasAddons=${hasAddons}`, item.addons);
 
   return (
     <div className="bg-white border border-gray-200 rounded-xl p-4 shadow-theme-xs transition-transform hover:scale-[1.01]">

@@ -738,7 +738,7 @@ export default function Menu() {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Quantity / Serves</label>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
                   <input
                     type="text"
                     placeholder="e.g. Serves 2, 200g"
@@ -922,7 +922,7 @@ export default function Menu() {
                         </select>
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Quantity / Serves</label>
+                        <label className="block text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">Description</label>
                         <input
                           type="text"
                           placeholder="e.g. Serves 2, 200g"
